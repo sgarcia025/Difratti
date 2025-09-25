@@ -689,6 +689,418 @@ class DifrattiAPITester:
             self.log_test("Role-based Customer Filtering", False, f"Exception: {str(e)}")
             return False
 
+    def test_user_management(self, admin_token):
+        """Test user management CRUD operations (Admin only)"""
+        try:
+            # Test get users
+            response = requests.get(
+                f"{self.api_url}/users",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                users = response.json()
+                self.log_test(
+                    "Get Users",
+                    True,
+                    f"Found {len(users)} users"
+                )
+                
+                # Test create user
+                new_user_data = {
+                    "email": f"test_user_{datetime.now().strftime('%H%M%S')}@difratti.com",
+                    "password": "testpass123",
+                    "full_name": "Test User",
+                    "role": "seller",
+                    "sap_salesperson_code": 99,
+                    "monthly_target": 50000.0
+                }
+                
+                create_response = requests.post(
+                    f"{self.api_url}/users",
+                    json=new_user_data,
+                    headers={"Authorization": f"Bearer {admin_token}"},
+                    timeout=10
+                )
+                
+                if create_response.status_code == 200:
+                    created_user = create_response.json()
+                    user_id = created_user.get("id")
+                    
+                    self.log_test(
+                        "Create User",
+                        True,
+                        f"Created user: {created_user.get('email')}, ID: {user_id}"
+                    )
+                    
+                    # Test update user
+                    update_data = {
+                        "full_name": "Updated Test User",
+                        "monthly_target": 60000.0
+                    }
+                    
+                    update_response = requests.put(
+                        f"{self.api_url}/users/{user_id}",
+                        json=update_data,
+                        headers={"Authorization": f"Bearer {admin_token}"},
+                        timeout=10
+                    )
+                    
+                    if update_response.status_code == 200:
+                        updated_user = update_response.json()
+                        self.log_test(
+                            "Update User",
+                            True,
+                            f"Updated user: {updated_user.get('full_name')}, Target: {updated_user.get('monthly_target')}"
+                        )
+                        
+                        # Test delete user
+                        delete_response = requests.delete(
+                            f"{self.api_url}/users/{user_id}",
+                            headers={"Authorization": f"Bearer {admin_token}"},
+                            timeout=10
+                        )
+                        
+                        if delete_response.status_code == 200:
+                            self.log_test(
+                                "Delete User",
+                                True,
+                                "User deleted successfully"
+                            )
+                            return True
+                        else:
+                            self.log_test(
+                                "Delete User",
+                                False,
+                                f"Status: {delete_response.status_code}"
+                            )
+                            return False
+                    else:
+                        self.log_test(
+                            "Update User",
+                            False,
+                            f"Status: {update_response.status_code}"
+                        )
+                        return False
+                else:
+                    self.log_test(
+                        "Create User",
+                        False,
+                        f"Status: {create_response.status_code}, Response: {create_response.text[:200]}"
+                    )
+                    return False
+            else:
+                self.log_test(
+                    "Get Users",
+                    False,
+                    f"Status: {response.status_code}"
+                )
+                return False
+                
+        except Exception as e:
+            self.log_test("User Management", False, f"Exception: {str(e)}")
+            return False
+
+    def test_quote_management(self, token):
+        """Test quote creation and management"""
+        try:
+            # Test create quote
+            quote_data = {
+                "card_code": "C20001",
+                "customer_name": "Empresa Tecnológica S.A.",
+                "contact_person": "Juan Pérez",
+                "comments": "Cotización de prueba desde testing",
+                "valid_until": "2025-12-31",
+                "shipping_address": "Zona 10, Guatemala",
+                "billing_address": "Zona 10, Guatemala",
+                "lines": [
+                    {
+                        "item_code": "A00001",
+                        "description": "Laptop HP Pavilion 15",
+                        "quantity": 2,
+                        "unit_price": 8500.00,
+                        "discount_pct": 5.0,
+                        "warehouse_code": "01",
+                        "tax_code": "IVA",
+                        "line_total": 16150.00
+                    },
+                    {
+                        "item_code": "A00002",
+                        "description": "Mouse Inalámbrico Logitech",
+                        "quantity": 2,
+                        "unit_price": 450.00,
+                        "discount_pct": 0.0,
+                        "warehouse_code": "01",
+                        "tax_code": "IVA",
+                        "line_total": 900.00
+                    }
+                ]
+            }
+            
+            response = requests.post(
+                f"{self.api_url}/quotes",
+                json=quote_data,
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                quote = response.json()
+                quote_id = quote.get("id")
+                quote_number = quote.get("quote_number")
+                status = quote.get("status")
+                grand_total = quote.get("grand_total")
+                
+                self.log_test(
+                    "Create Quote",
+                    True,
+                    f"Quote: {quote_number}, Status: {status}, Total: Q{grand_total}"
+                )
+                
+                # Test get quotes
+                get_response = requests.get(
+                    f"{self.api_url}/quotes",
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=10
+                )
+                
+                if get_response.status_code == 200:
+                    quotes_data = get_response.json()
+                    quotes = quotes_data.get("quotes", [])
+                    
+                    self.log_test(
+                        "Get Quotes",
+                        True,
+                        f"Found {len(quotes)} quotes"
+                    )
+                    
+                    # Test update quote status
+                    status_update = {
+                        "status": "sent",
+                        "comments": "Cotización enviada al cliente"
+                    }
+                    
+                    status_response = requests.put(
+                        f"{self.api_url}/quotes/{quote_id}/status",
+                        json=status_update,
+                        headers={"Authorization": f"Bearer {token}"},
+                        timeout=10
+                    )
+                    
+                    if status_response.status_code == 200:
+                        self.log_test(
+                            "Update Quote Status",
+                            True,
+                            "Quote status updated to 'sent'"
+                        )
+                        
+                        # Test convert quote to order
+                        convert_response = requests.post(
+                            f"{self.api_url}/quotes/{quote_id}/convert-to-order",
+                            headers={"Authorization": f"Bearer {token}"},
+                            timeout=10
+                        )
+                        
+                        if convert_response.status_code == 200:
+                            order_data = convert_response.json()
+                            order_id = order_data.get("id")
+                            
+                            self.log_test(
+                                "Convert Quote to Order",
+                                True,
+                                f"Quote converted to order: {order_id}"
+                            )
+                            return True
+                        else:
+                            self.log_test(
+                                "Convert Quote to Order",
+                                False,
+                                f"Status: {convert_response.status_code}"
+                            )
+                            return False
+                    else:
+                        self.log_test(
+                            "Update Quote Status",
+                            False,
+                            f"Status: {status_response.status_code}"
+                        )
+                        return False
+                else:
+                    self.log_test(
+                        "Get Quotes",
+                        False,
+                        f"Status: {get_response.status_code}"
+                    )
+                    return False
+            else:
+                self.log_test(
+                    "Create Quote",
+                    False,
+                    f"Status: {response.status_code}, Response: {response.text[:200]}"
+                )
+                return False
+                
+        except Exception as e:
+            self.log_test("Quote Management", False, f"Exception: {str(e)}")
+            return False
+
+    def test_order_management_enhanced(self, token):
+        """Test enhanced order creation with product selection"""
+        try:
+            order_data = {
+                "card_code": "C20002",
+                "customer_name": "Distribuidora Central",
+                "contact_person": "María González",
+                "doc_date": datetime.now().strftime("%Y-%m-%d"),
+                "doc_due_date": datetime.now().strftime("%Y-%m-%d"),
+                "comments": "Pedido de prueba con selección de productos",
+                "shipping_address": "Zona 12, Guatemala",
+                "billing_address": "Zona 12, Guatemala",
+                "payment_terms": "30 días",
+                "priority": "High",
+                "lines": [
+                    {
+                        "item_code": "A00003",
+                        "description": "Teclado Mecánico RGB",
+                        "quantity": 5,
+                        "unit_price": 1200.00,
+                        "discount_pct": 10.0,
+                        "warehouse_code": "01",
+                        "tax_code": "IVA",
+                        "line_total": 5400.00
+                    },
+                    {
+                        "item_code": "A00004",
+                        "description": "Monitor 24 pulgadas LG",
+                        "quantity": 3,
+                        "unit_price": 2500.00,
+                        "discount_pct": 0.0,
+                        "warehouse_code": "01",
+                        "tax_code": "IVA",
+                        "line_total": 7500.00
+                    }
+                ]
+            }
+            
+            response = requests.post(
+                f"{self.api_url}/orders",
+                json=order_data,
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                order = response.json()
+                order_id = order.get("id")
+                external_id = order.get("external_id")
+                status = order.get("status")
+                grand_total = order.get("grand_total")
+                
+                self.log_test(
+                    "Create Enhanced Order",
+                    True,
+                    f"Order: {external_id}, Status: {status}, Total: Q{grand_total}"
+                )
+                
+                # Test get orders
+                get_response = requests.get(
+                    f"{self.api_url}/orders",
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=10
+                )
+                
+                if get_response.status_code == 200:
+                    orders_data = get_response.json()
+                    orders = orders_data.get("orders", [])
+                    
+                    self.log_test(
+                        "Get Orders",
+                        True,
+                        f"Found {len(orders)} orders"
+                    )
+                    return True
+                else:
+                    self.log_test(
+                        "Get Orders",
+                        False,
+                        f"Status: {get_response.status_code}"
+                    )
+                    return False
+            else:
+                self.log_test(
+                    "Create Enhanced Order",
+                    False,
+                    f"Status: {response.status_code}, Response: {response.text[:200]}"
+                )
+                return False
+                
+        except Exception as e:
+            self.log_test("Enhanced Order Management", False, f"Exception: {str(e)}")
+            return False
+
+    def test_dashboard_date_filters(self, token):
+        """Test dashboard date filtering functionality"""
+        try:
+            # Test current month
+            current_month = datetime.now().month
+            current_year = datetime.now().year
+            
+            response = requests.get(
+                f"{self.api_url}/dashboard/stats?month={current_month}&year={current_year}",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                month_name = data.get("month_name")
+                year = data.get("current_year")
+                
+                self.log_test(
+                    "Dashboard Date Filter (Current)",
+                    True,
+                    f"Month: {month_name}, Year: {year}"
+                )
+                
+                # Test different month
+                test_month = 1 if current_month != 1 else 2
+                
+                response2 = requests.get(
+                    f"{self.api_url}/dashboard/stats?month={test_month}&year={current_year}",
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=10
+                )
+                
+                if response2.status_code == 200:
+                    data2 = response2.json()
+                    month_name2 = data2.get("month_name")
+                    
+                    self.log_test(
+                        "Dashboard Date Filter (Different Month)",
+                        True,
+                        f"Month: {month_name2}, Year: {current_year}"
+                    )
+                    return True
+                else:
+                    self.log_test(
+                        "Dashboard Date Filter (Different Month)",
+                        False,
+                        f"Status: {response2.status_code}"
+                    )
+                    return False
+            else:
+                self.log_test(
+                    "Dashboard Date Filter (Current)",
+                    False,
+                    f"Status: {response.status_code}"
+                )
+                return False
+                
+        except Exception as e:
+            self.log_test("Dashboard Date Filters", False, f"Exception: {str(e)}")
+            return False
+
     def run_all_tests(self):
         """Run all backend tests"""
         print("🚀 Starting Enhanced Difratti Sales System Backend Tests")
