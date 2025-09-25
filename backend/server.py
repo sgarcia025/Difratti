@@ -203,7 +203,7 @@ class SAPServiceLayer:
 
     async def create_order(self, order_data: dict):
         if SAP_MODE == "mock":
-            return {"DocEntry": 12345, "DocNum": "SO-2025-001", "success": True}
+            return {"DocEntry": 12345, "DocNum": 12345, "success": True}
             
         # Real SAP implementation would go here
         return {"success": False, "error": "Not implemented"}
