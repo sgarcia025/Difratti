@@ -665,6 +665,33 @@ async def get_users(current_user: User = Depends(require_role([UserRole.ADMIN]))
     users = await db.users.find({}, {"password_hash": 0}).to_list(None)
     return [User(**user) for user in users]
 
+@api_router.get("/salespeople")
+async def get_salespeople(current_user: User = Depends(require_role([UserRole.ADMIN]))):
+    """Get list of salespeople for filtering purposes"""
+    salespeople = await db.users.find(
+        {"role": {"$in": ["seller", "supervisor"]}, "is_active": True},
+        {"_id": 0, "id": 1, "full_name": 1, "sap_salesperson_code": 1, "email": 1}
+    ).to_list(None)
+    
+    # Add "All Salespeople" option
+    result = [{
+        "id": "all",
+        "full_name": "Todos los Vendedores",
+        "sap_salesperson_code": None,
+        "email": "all"
+    }]
+    
+    for salesperson in salespeople:
+        if salesperson.get("sap_salesperson_code"):
+            result.append({
+                "id": salesperson["id"],
+                "full_name": salesperson["full_name"],
+                "sap_salesperson_code": salesperson["sap_salesperson_code"],
+                "email": salesperson["email"]
+            })
+    
+    return result
+
 @api_router.post("/users", response_model=User)
 async def create_user(
     user_data: UserCreate,
@@ -877,14 +904,18 @@ async def get_quotes(
     status: Optional[QuoteStatus] = None,
     month: Optional[int] = None,
     year: Optional[int] = None,
+    salesperson_code: Optional[int] = None,
     current_user: User = Depends(get_current_user)
 ):
     # Build filter
     filter_condition = {}
     
-    # Role-based filtering
+    # Role-based filtering - sellers only see their own quotes
     if current_user.role == UserRole.SELLER:
         filter_condition["salesperson_code"] = current_user.sap_salesperson_code
+    elif current_user.role in [UserRole.ADMIN, UserRole.SUPERVISOR] and salesperson_code:
+        # Admin/Supervisor can filter by specific salesperson
+        filter_condition["salesperson_code"] = salesperson_code
     
     # Status filtering
     if status:
@@ -1049,14 +1080,18 @@ async def get_orders(
     status: Optional[OrderStatus] = None,
     month: Optional[int] = None,
     year: Optional[int] = None,
+    salesperson_code: Optional[int] = None,
     current_user: User = Depends(get_current_user)
 ):
     # Build filter
     filter_condition = {}
     
-    # Role-based filtering
+    # Role-based filtering - sellers only see their own orders
     if current_user.role == UserRole.SELLER:
         filter_condition["salesperson_code"] = current_user.sap_salesperson_code
+    elif current_user.role in [UserRole.ADMIN, UserRole.SUPERVISOR] and salesperson_code:
+        # Admin/Supervisor can filter by specific salesperson
+        filter_condition["salesperson_code"] = salesperson_code
     
     # Status filtering
     if status:
@@ -1183,6 +1218,7 @@ async def sap_health_check(current_user: User = Depends(get_current_user)):
 async def get_dashboard_stats(
     month: Optional[int] = None,
     year: Optional[int] = None,
+    salesperson_code: Optional[int] = None,
     current_user: User = Depends(get_current_user)
 ):
     # Default to current month if not specified
@@ -1198,94 +1234,89 @@ async def get_dashboard_stats(
     else:
         end_date = datetime(year, month + 1, 1, tzinfo=timezone.utc)
     
+    # Determine which salesperson data to show
+    target_salesperson_code = None
     if current_user.role == UserRole.SELLER:
-        # Seller-specific dashboard
-        filter_condition = {"salesperson_code": current_user.sap_salesperson_code}
+        # Sellers always see only their own data
+        target_salesperson_code = current_user.sap_salesperson_code
+    elif current_user.role in [UserRole.ADMIN, UserRole.SUPERVISOR] and salesperson_code:
+        # Admin/Supervisor can filter by specific salesperson
+        target_salesperson_code = salesperson_code
+    
+    # Build filter condition
+    filter_condition = {}
+    if target_salesperson_code:
+        filter_condition["salesperson_code"] = target_salesperson_code
+    
+    # Count orders by status
+    order_stats = {}
+    for status in OrderStatus:
+        count = await db.orders.count_documents({**filter_condition, "status": status.value})
+        order_stats[status.value] = count
+    
+    # Count quotes by status
+    quote_stats = {}
+    for status in QuoteStatus:
+        count = await db.quotes.count_documents({**filter_condition, "status": status.value})
+        quote_stats[status.value] = count
+    
+    # Calculate monthly sales
+    monthly_orders = await db.orders.find({
+        **filter_condition,
+        "status": {"$in": [OrderStatus.SYNCED.value, OrderStatus.INVOICED.value]},
+        "created_at": {"$gte": start_date, "$lt": end_date}
+    }).to_list(None)
+    
+    monthly_sales = sum(order.get("grand_total", 0) for order in monthly_orders)
+    
+    # Calculate quote conversion rate
+    total_quotes = await db.quotes.count_documents({
+        **filter_condition,
+        "created_at": {"$gte": start_date, "$lt": end_date}
+    })
+    won_quotes = await db.quotes.count_documents({
+        **filter_condition,
+        "status": QuoteStatus.WON.value,
+        "created_at": {"$gte": start_date, "$lt": end_date}
+    })
+    
+    conversion_rate = (won_quotes / total_quotes * 100) if total_quotes > 0 else 0
+    
+    if current_user.role == UserRole.SELLER or target_salesperson_code:
+        # Individual salesperson view
+        if target_salesperson_code:
+            # Get salesperson info for admin viewing specific seller
+            salesperson = await db.users.find_one({"sap_salesperson_code": target_salesperson_code})
+            monthly_target = salesperson.get("monthly_target", 0) if salesperson else 0
+            salesperson_name = salesperson.get("full_name", "Unknown") if salesperson else "Unknown"
+        else:
+            # Current user is seller viewing their own data
+            monthly_target = current_user.monthly_target
+            salesperson_name = current_user.full_name
         
-        # Count orders by status for this seller
-        order_stats = {}
-        for status in OrderStatus:
-            count = await db.orders.count_documents({**filter_condition, "status": status.value})
-            order_stats[status.value] = count
-        
-        # Count quotes by status for this seller
-        quote_stats = {}
-        for status in QuoteStatus:
-            count = await db.quotes.count_documents({**filter_condition, "status": status.value})
-            quote_stats[status.value] = count
-        
-        # Calculate seller's monthly sales
-        monthly_orders = await db.orders.find({
-            **filter_condition,
-            "status": {"$in": [OrderStatus.SYNCED.value, OrderStatus.INVOICED.value]},
-            "created_at": {"$gte": start_date, "$lt": end_date}
-        }).to_list(None)
-        
-        monthly_sales = sum(order.get("grand_total", 0) for order in monthly_orders)
-        
-        # Calculate quote conversion rate
-        total_quotes = await db.quotes.count_documents({
-            **filter_condition,
-            "created_at": {"$gte": start_date, "$lt": end_date}
-        })
-        won_quotes = await db.quotes.count_documents({
-            **filter_condition,
-            "status": QuoteStatus.WON.value,
-            "created_at": {"$gte": start_date, "$lt": end_date}
-        })
-        
-        conversion_rate = (won_quotes / total_quotes * 100) if total_quotes > 0 else 0
-        
-        # Get seller's customers count
-        customers = await sap.get_customers("", current_user.sap_salesperson_code)
+        # Get customer count for this salesperson
+        customers = await sap.get_customers("", target_salesperson_code or current_user.sap_salesperson_code)
         customer_count = len(customers)
         
         return {
             "monthly_sales": monthly_sales,
-            "monthly_target": current_user.monthly_target,
-            "target_progress": (monthly_sales / current_user.monthly_target * 100) if current_user.monthly_target > 0 else 0,
+            "monthly_target": monthly_target,
+            "target_progress": (monthly_sales / monthly_target * 100) if monthly_target > 0 else 0,
             "order_stats": order_stats,
             "quote_stats": quote_stats,
             "quote_conversion_rate": conversion_rate,
             "total_quotes_month": total_quotes,
             "customer_count": customer_count,
             "pending_sync": await db.orders.count_documents({**filter_condition, "status": OrderStatus.QUEUED.value}),
-            "user_role": "seller",
+            "user_role": "seller" if current_user.role == UserRole.SELLER else "admin_filtered",
             "current_month": month,
             "current_year": year,
-            "month_name": calendar.month_name[month]
+            "month_name": calendar.month_name[month],
+            "salesperson_name": salesperson_name,
+            "salesperson_code": target_salesperson_code or current_user.sap_salesperson_code
         }
     else:
-        # Admin/Supervisor dashboard - global view
-        order_stats = {}
-        for status in OrderStatus:
-            count = await db.orders.count_documents({"status": status.value})
-            order_stats[status.value] = count
-        
-        quote_stats = {}
-        for status in QuoteStatus:
-            count = await db.quotes.count_documents({"status": status.value})
-            quote_stats[status.value] = count
-        
-        # Global monthly sales
-        monthly_orders = await db.orders.find({
-            "status": {"$in": [OrderStatus.SYNCED.value, OrderStatus.INVOICED.value]},
-            "created_at": {"$gte": start_date, "$lt": end_date}
-        }).to_list(None)
-        
-        monthly_sales = sum(order.get("grand_total", 0) for order in monthly_orders)
-        
-        # Global quote conversion
-        total_quotes = await db.quotes.count_documents({
-            "created_at": {"$gte": start_date, "$lt": end_date}
-        })
-        won_quotes = await db.quotes.count_documents({
-            "status": QuoteStatus.WON.value,
-            "created_at": {"$gte": start_date, "$lt": end_date}
-        })
-        
-        conversion_rate = (won_quotes / total_quotes * 100) if total_quotes > 0 else 0
-        
+        # Admin/Supervisor global view
         # Get total customers
         customers = await sap.get_customers("")
         customer_count = len(customers)
