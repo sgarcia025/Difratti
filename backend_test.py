@@ -1103,7 +1103,7 @@ class DifrattiAPITester:
 
     def run_all_tests(self):
         """Run all backend tests"""
-        print("🚀 Starting Enhanced Difratti Sales System Backend Tests")
+        print("🚀 Starting Fully Enhanced Difratti Sales System Backend Tests")
         print(f"📍 Testing API at: {self.api_url}")
         print("=" * 60)
         
@@ -1129,8 +1129,11 @@ class DifrattiAPITester:
             self.test_role_based_dashboard(self.admin_token, self.seller_token)
             self.test_role_based_customers(self.admin_token, self.seller_token)
         
-        # Use admin token for admin-only tests
+        # Test admin-only user management features
         if admin_login_success:
+            print(f"\n👥 Testing admin-only user management features")
+            self.test_user_management(self.admin_token)
+            
             print(f"\n🔑 Testing admin-only SAP configuration features")
             self.test_sap_config_get(self.admin_token)
             self.test_sap_config_update(self.admin_token)
@@ -1151,8 +1154,9 @@ class DifrattiAPITester:
         
         print(f"\n🔑 Using {user_type} token for general tests")
         
-        # Test dashboard stats
+        # Test dashboard stats with date filtering
         self.test_dashboard_stats(test_token)
+        self.test_dashboard_date_filters(test_token)
         
         # Test inventory
         self.test_inventory(test_token)
@@ -1160,7 +1164,15 @@ class DifrattiAPITester:
         # Test customers
         self.test_customers(test_token)
         
-        # Test order creation and retrieval
+        # Test enhanced quote management system
+        print(f"\n📋 Testing quote management system")
+        self.test_quote_management(test_token)
+        
+        # Test enhanced order management
+        print(f"\n📦 Testing enhanced order management")
+        self.test_order_management_enhanced(test_token)
+        
+        # Test legacy order creation and retrieval
         order_id = self.test_create_order(test_token)
         if order_id:
             self.test_get_order(test_token, order_id)
