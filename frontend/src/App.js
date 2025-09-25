@@ -1307,12 +1307,37 @@ const Dashboard = () => {
 
   useEffect(() => {
     loadDashboardStats();
-  }, [selectedMonth, selectedYear]);
+    if (user?.role === 'admin') {
+      loadSalespeople();
+    }
+  }, [selectedMonth, selectedYear, selectedSalesperson]);
+
+  const loadSalespeople = async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const response = await axios.get(`${API}/salespeople`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setSalespeople(response.data);
+    } catch (error) {
+      console.error('Error loading salespeople:', error);
+    }
+  };
 
   const loadDashboardStats = async () => {
     try {
       const token = localStorage.getItem('access_token');
-      const response = await axios.get(`${API}/dashboard/stats?month=${selectedMonth}&year=${selectedYear}`, {
+      let url = `${API}/dashboard/stats?month=${selectedMonth}&year=${selectedYear}`;
+      
+      // Add salesperson filter for admin
+      if (user?.role === 'admin' && selectedSalesperson !== 'all') {
+        const salesperson = salespeople.find(s => s.id === selectedSalesperson);
+        if (salesperson?.sap_salesperson_code) {
+          url += `&salesperson_code=${salesperson.sap_salesperson_code}`;
+        }
+      }
+      
+      const response = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setStats(response.data);
