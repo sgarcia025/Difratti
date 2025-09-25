@@ -33,14 +33,18 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 
-# SAP Configuration
-SAP_MODE = os.environ.get("SAP_MODE", "mock")  # mock or real
-B1_HOST = os.environ.get("B1_HOST", "")
-B1_COMPANY_DB = os.environ.get("B1_COMPANY_DB", "")
-B1_USERNAME = os.environ.get("B1_USERNAME", "")
-B1_PASSWORD = os.environ.get("B1_PASSWORD", "")
-B1_SSL_VERIFY = os.environ.get("B1_SSL_VERIFY", "true").lower() == "true"
-B1_TIMEOUT_MS = int(os.environ.get("B1_TIMEOUT_MS", "60000"))
+# SAP Configuration - Now stored in database
+DEFAULT_SAP_CONFIG = {
+    "sap_mode": os.environ.get("SAP_MODE", "mock"),
+    "b1_host": os.environ.get("B1_HOST", ""),
+    "b1_company_db": os.environ.get("B1_COMPANY_DB", ""),
+    "b1_username": os.environ.get("B1_USERNAME", ""),
+    "b1_password": os.environ.get("B1_PASSWORD", ""),
+    "b1_ssl_verify": os.environ.get("B1_SSL_VERIFY", "true").lower() == "true",
+    "b1_timeout_ms": int(os.environ.get("B1_TIMEOUT_MS", "60000")),
+    "connection_status": "disconnected",
+    "last_test": None
+}
 
 # Create the main app
 app = FastAPI(title="Difratti Sales System", version="1.0.0")
@@ -66,6 +70,12 @@ class QuoteStatus(str, Enum):
     LOST = "lost"
     EXPIRED = "expired"
 
+class SAPConnectionStatus(str, Enum):
+    CONNECTED = "connected"
+    DISCONNECTED = "disconnected"
+    ERROR = "error"
+    TESTING = "testing"
+
 # Models
 class User(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -75,6 +85,8 @@ class User(BaseModel):
     is_active: bool = True
     sap_salesperson_code: Optional[int] = None
     team_id: Optional[str] = None
+    assigned_customers: List[str] = Field(default_factory=list)
+    monthly_target: float = 0.0
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -84,6 +96,7 @@ class UserCreate(BaseModel):
     full_name: str
     role: UserRole
     sap_salesperson_code: Optional[int] = None
+    monthly_target: Optional[float] = 0.0
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -96,12 +109,32 @@ class Token(BaseModel):
     role: UserRole
     full_name: str
 
+class SAPConfig(BaseModel):
+    sap_mode: str = "mock"  # mock or real
+    b1_host: str = ""
+    b1_company_db: str = ""
+    b1_username: str = ""
+    b1_password: str = ""
+    b1_ssl_verify: bool = True
+    b1_timeout_ms: int = 60000
+    connection_status: str = "disconnected"
+    last_test: Optional[datetime] = None
+
+class SAPConfigUpdate(BaseModel):
+    b1_host: str
+    b1_company_db: str
+    b1_username: str
+    b1_password: str
+    b1_ssl_verify: Optional[bool] = True
+    b1_timeout_ms: Optional[int] = 60000
+
 class Customer(BaseModel):
     card_code: str
     card_name: str
     phone: Optional[str] = None
     price_list_num: Optional[int] = None
     balance: float = 0.0
+    salesperson_code: Optional[int] = None
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class Item(BaseModel):
@@ -160,68 +193,262 @@ class Order(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-# SAP Service Layer Adapter
+# SAP Service Layer Adapter - Enhanced
 class SAPServiceLayer:
     def __init__(self):
         self.session_cookies = {}
-        self.timeout = B1_TIMEOUT_MS / 1000
+        self.config = None
+
+    async def get_config(self):
+        """Get SAP configuration from database"""
+        if not self.config:
+            config_doc = await db.sap_config.find_one({})
+            if not config_doc:
+                # Create default config
+                await db.sap_config.insert_one(DEFAULT_SAP_CONFIG)
+                self.config = DEFAULT_SAP_CONFIG
+            else:
+                self.config = config_doc
+        return self.config
+
+    async def update_config(self, new_config: dict):
+        """Update SAP configuration in database"""
+        await db.sap_config.update_one({}, {"$set": new_config}, upsert=True)
+        self.config = None  # Reset cache
 
     async def login(self):
-        if SAP_MODE == "mock":
+        """Login to SAP B1 Service Layer"""
+        config = await self.get_config()
+        
+        if config["sap_mode"] == "mock":
             self.session_cookies = {"B1SESSION": "mock-session", "ROUTEID": "mock-route"}
+            await self.update_config({**config, "connection_status": "connected"})
             return True
             
         try:
-            async with httpx.AsyncClient(verify=B1_SSL_VERIFY, timeout=self.timeout) as client:
+            async with httpx.AsyncClient(
+                verify=config["b1_ssl_verify"], 
+                timeout=config["b1_timeout_ms"] / 1000
+            ) as client:
                 login_data = {
-                    "UserName": B1_USERNAME,
-                    "Password": B1_PASSWORD,
-                    "CompanyDB": B1_COMPANY_DB
+                    "UserName": config["b1_username"],
+                    "Password": config["b1_password"],
+                    "CompanyDB": config["b1_company_db"]
                 }
-                response = await client.post(f"{B1_HOST}/Login", json=login_data)
+                response = await client.post(f"{config['b1_host']}/Login", json=login_data)
+                
                 if response.status_code == 200:
-                    self.session_cookies = response.cookies
+                    self.session_cookies = dict(response.cookies)
+                    await self.update_config({
+                        **config, 
+                        "connection_status": "connected",
+                        "last_test": datetime.now(timezone.utc)
+                    })
                     return True
-                return False
+                else:
+                    await self.update_config({
+                        **config, 
+                        "connection_status": "error",
+                        "last_test": datetime.now(timezone.utc)
+                    })
+                    return False
         except Exception as e:
             logger.error(f"SAP login failed: {e}")
+            config = await self.get_config()
+            await self.update_config({
+                **config, 
+                "connection_status": "error",
+                "last_test": datetime.now(timezone.utc)
+            })
+            return False
+
+    async def test_connection(self, test_config: dict):
+        """Test SAP connection with provided credentials"""
+        try:
+            async with httpx.AsyncClient(
+                verify=test_config.get("b1_ssl_verify", True), 
+                timeout=test_config.get("b1_timeout_ms", 60000) / 1000
+            ) as client:
+                login_data = {
+                    "UserName": test_config["b1_username"],
+                    "Password": test_config["b1_password"],
+                    "CompanyDB": test_config["b1_company_db"]
+                }
+                response = await client.post(f"{test_config['b1_host']}/Login", json=login_data)
+                return response.status_code == 200
+        except Exception as e:
+            logger.error(f"SAP connection test failed: {e}")
             return False
 
     async def get_items(self, search: str = "", page: int = 1, page_size: int = 50):
-        if SAP_MODE == "mock":
+        config = await self.get_config()
+        
+        if config["sap_mode"] == "mock":
             return self._mock_items(search, page, page_size)
             
-        # Real SAP implementation would go here
-        return {"items": [], "total": 0}
-
-    async def get_customers(self, search: str = ""):
-        if SAP_MODE == "mock":
-            return self._mock_customers(search)
+        if not self.session_cookies:
+            if not await self.login():
+                return {"items": [], "total": 0, "error": "SAP connection failed"}
+        
+        try:
+            skip = (page - 1) * page_size
+            filter_query = ""
+            if search:
+                filter_query = f"?$filter=contains(ItemName,'{search}')&$top={page_size}&$skip={skip}&$select=ItemCode,ItemName,QuantityOnStock,UoMEntry"
+            else:
+                filter_query = f"?$top={page_size}&$skip={skip}&$select=ItemCode,ItemName,QuantityOnStock,UoMEntry"
             
-        # Real SAP implementation would go here
-        return []
+            async with httpx.AsyncClient(verify=config["b1_ssl_verify"]) as client:
+                response = await client.get(
+                    f"{config['b1_host']}/Items{filter_query}",
+                    cookies=self.session_cookies
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    items = []
+                    for item in data.get("value", []):
+                        items.append({
+                            "ItemCode": item.get("ItemCode"),
+                            "ItemName": item.get("ItemName"),
+                            "UOM": item.get("UoMEntry"),
+                            "IsActive": True,
+                            "Stock": item.get("QuantityOnStock", 0)
+                        })
+                    return {
+                        "items": items,
+                        "total": len(items),
+                        "page": page,
+                        "page_size": page_size
+                    }
+                else:
+                    # Try to re-login if unauthorized
+                    if response.status_code == 401:
+                        if await self.login():
+                            return await self.get_items(search, page, page_size)
+                    return {"items": [], "total": 0, "error": f"SAP API error: {response.status_code}"}
+        except Exception as e:
+            logger.error(f"SAP get_items failed: {e}")
+            return {"items": [], "total": 0, "error": str(e)}
+
+    async def get_customers(self, search: str = "", salesperson_code: Optional[int] = None):
+        config = await self.get_config()
+        
+        if config["sap_mode"] == "mock":
+            return self._mock_customers(search, salesperson_code)
+            
+        if not self.session_cookies:
+            if not await self.login():
+                return []
+        
+        try:
+            filter_parts = ["CardType eq 'C'"]
+            if search:
+                filter_parts.append(f"(contains(CardName,'{search}') or startswith(CardCode,'{search}'))")
+            if salesperson_code:
+                filter_parts.append(f"SalesPersonCode eq {salesperson_code}")
+            
+            filter_query = "$filter=" + " and ".join(filter_parts)
+            select_query = "$select=CardCode,CardName,Phone1,PriceListNum,CurrentAccountBalance,SalesPersonCode"
+            
+            async with httpx.AsyncClient(verify=config["b1_ssl_verify"]) as client:
+                response = await client.get(
+                    f"{config['b1_host']}/BusinessPartners?{filter_query}&{select_query}",
+                    cookies=self.session_cookies
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    customers = []
+                    for customer in data.get("value", []):
+                        customers.append({
+                            "CardCode": customer.get("CardCode"),
+                            "CardName": customer.get("CardName"),
+                            "Phone1": customer.get("Phone1"),
+                            "PriceListNum": customer.get("PriceListNum"),
+                            "Balance": customer.get("CurrentAccountBalance", 0),
+                            "SalesPersonCode": customer.get("SalesPersonCode")
+                        })
+                    return customers
+                else:
+                    if response.status_code == 401:
+                        if await self.login():
+                            return await self.get_customers(search, salesperson_code)
+                    return []
+        except Exception as e:
+            logger.error(f"SAP get_customers failed: {e}")
+            return []
 
     async def create_order(self, order_data: dict):
-        if SAP_MODE == "mock":
+        config = await self.get_config()
+        
+        if config["sap_mode"] == "mock":
             return {"DocEntry": 12345, "DocNum": 12345, "success": True}
             
-        # Real SAP implementation would go here
-        return {"success": False, "error": "Not implemented"}
+        if not self.session_cookies:
+            if not await self.login():
+                return {"success": False, "error": "SAP connection failed"}
+        
+        try:
+            async with httpx.AsyncClient(verify=config["b1_ssl_verify"]) as client:
+                response = await client.post(
+                    f"{config['b1_host']}/Orders",
+                    json=order_data,
+                    cookies=self.session_cookies
+                )
+                
+                if response.status_code == 201:
+                    result = response.json()
+                    return {
+                        "DocEntry": result.get("DocEntry"),
+                        "DocNum": result.get("DocNum"),
+                        "success": True
+                    }
+                else:
+                    if response.status_code == 401:
+                        if await self.login():
+                            return await self.create_order(order_data)
+                    return {"success": False, "error": f"SAP API error: {response.status_code}"}
+        except Exception as e:
+            logger.error(f"SAP create_order failed: {e}")
+            return {"success": False, "error": str(e)}
 
     async def find_order_by_external_id(self, external_id: str):
-        if SAP_MODE == "mock":
+        config = await self.get_config()
+        
+        if config["sap_mode"] == "mock":
             return None  # Not found in mock
             
-        # Real SAP implementation would go here
-        return None
+        if not self.session_cookies:
+            if not await self.login():
+                return None
+        
+        try:
+            filter_query = f"$filter=U_ExternalId eq '{external_id}'"
+            async with httpx.AsyncClient(verify=config["b1_ssl_verify"]) as client:
+                response = await client.get(
+                    f"{config['b1_host']}/Orders?{filter_query}",
+                    cookies=self.session_cookies
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    orders = data.get("value", [])
+                    return orders[0] if orders else None
+                return None
+        except Exception as e:
+            logger.error(f"SAP find_order_by_external_id failed: {e}")
+            return None
 
     def _mock_items(self, search: str, page: int, page_size: int):
         mock_items = [
-            {"ItemCode": "A00001", "ItemName": "Laptop HP Pavilion 15", "UOM": "Each", "IsActive": True},
-            {"ItemCode": "A00002", "ItemName": "Mouse Inalámbrico Logitech", "UOM": "Each", "IsActive": True},
-            {"ItemCode": "A00003", "ItemName": "Teclado Mecánico RGB", "UOM": "Each", "IsActive": True},
-            {"ItemCode": "A00004", "ItemName": "Monitor 24 pulgadas LG", "UOM": "Each", "IsActive": True},
-            {"ItemCode": "A00005", "ItemName": "Impresora Multifuncional Canon", "UOM": "Each", "IsActive": True}
+            {"ItemCode": "A00001", "ItemName": "Laptop HP Pavilion 15", "UOM": "Each", "IsActive": True, "Stock": 25},
+            {"ItemCode": "A00002", "ItemName": "Mouse Inalámbrico Logitech", "UOM": "Each", "IsActive": True, "Stock": 150},
+            {"ItemCode": "A00003", "ItemName": "Teclado Mecánico RGB", "UOM": "Each", "IsActive": True, "Stock": 75},
+            {"ItemCode": "A00004", "ItemName": "Monitor 24 pulgadas LG", "UOM": "Each", "IsActive": True, "Stock": 40},
+            {"ItemCode": "A00005", "ItemName": "Impresora Multifuncional Canon", "UOM": "Each", "IsActive": True, "Stock": 30},
+            {"ItemCode": "A00006", "ItemName": "Disco Duro Externo 1TB", "UOM": "Each", "IsActive": True, "Stock": 60},
+            {"ItemCode": "A00007", "ItemName": "Webcam HD Logitech", "UOM": "Each", "IsActive": True, "Stock": 85}
         ]
         
         if search:
@@ -237,16 +464,21 @@ class SAPServiceLayer:
             "page_size": page_size
         }
 
-    def _mock_customers(self, search: str):
+    def _mock_customers(self, search: str, salesperson_code: Optional[int] = None):
         mock_customers = [
-            {"CardCode": "C20001", "CardName": "Empresa Tecnológica S.A.", "Phone1": "2234-5678", "PriceListNum": 1, "Balance": 15750.00},
-            {"CardCode": "C20002", "CardName": "Distribuidora Central", "Phone1": "2345-6789", "PriceListNum": 2, "Balance": 8920.50},
-            {"CardCode": "C20003", "CardName": "Comercial del Norte", "Phone1": "2456-7890", "PriceListNum": 1, "Balance": 22100.25},
-            {"CardCode": "C20004", "CardName": "Sistemas Integrados", "Phone1": "2567-8901", "PriceListNum": 3, "Balance": 5430.75}
+            {"CardCode": "C20001", "CardName": "Empresa Tecnológica S.A.", "Phone1": "2234-5678", "PriceListNum": 1, "Balance": 15750.00, "SalesPersonCode": 1},
+            {"CardCode": "C20002", "CardName": "Distribuidora Central", "Phone1": "2345-6789", "PriceListNum": 2, "Balance": 8920.50, "SalesPersonCode": 1},
+            {"CardCode": "C20003", "CardName": "Comercial del Norte", "Phone1": "2456-7890", "PriceListNum": 1, "Balance": 22100.25, "SalesPersonCode": 3},
+            {"CardCode": "C20004", "CardName": "Sistemas Integrados", "Phone1": "2567-8901", "PriceListNum": 3, "Balance": 5430.75, "SalesPersonCode": 3},
+            {"CardCode": "C20005", "CardName": "Oficina Moderna S.A.", "Phone1": "2678-9012", "PriceListNum": 1, "Balance": 12450.00, "SalesPersonCode": 1},
+            {"CardCode": "C20006", "CardName": "Tech Solutions GT", "Phone1": "2789-0123", "PriceListNum": 2, "Balance": 18920.75, "SalesPersonCode": 3}
         ]
         
         if search:
             mock_customers = [c for c in mock_customers if search.lower() in c["CardName"].lower()]
+        
+        if salesperson_code:
+            mock_customers = [c for c in mock_customers if c["SalesPersonCode"] == salesperson_code]
             
         return mock_customers
 
@@ -354,6 +586,82 @@ async def refresh_token(refresh_token: str):
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
     return current_user
 
+# SAP Configuration endpoints (Admin only)
+@api_router.get("/sap/config")
+async def get_sap_config(current_user: User = Depends(require_role([UserRole.ADMIN]))):
+    config = await sap.get_config()
+    # Don't send password back
+    safe_config = config.copy()
+    safe_config["b1_password"] = "****" if config["b1_password"] else ""
+    return safe_config
+
+@api_router.post("/sap/config")
+async def update_sap_config(
+    config_update: SAPConfigUpdate,
+    current_user: User = Depends(require_role([UserRole.ADMIN]))
+):
+    current_config = await sap.get_config()
+    
+    new_config = {
+        **current_config,
+        "b1_host": config_update.b1_host,
+        "b1_company_db": config_update.b1_company_db,
+        "b1_username": config_update.b1_username,
+        "b1_password": config_update.b1_password,
+        "b1_ssl_verify": config_update.b1_ssl_verify,
+        "b1_timeout_ms": config_update.b1_timeout_ms,
+        "connection_status": "disconnected"
+    }
+    
+    await sap.update_config(new_config)
+    
+    return {"message": "SAP configuration updated successfully"}
+
+@api_router.post("/sap/test-connection")
+async def test_sap_connection(
+    config_update: SAPConfigUpdate,
+    current_user: User = Depends(require_role([UserRole.ADMIN]))
+):
+    test_config = {
+        "b1_host": config_update.b1_host,
+        "b1_company_db": config_update.b1_company_db,
+        "b1_username": config_update.b1_username,
+        "b1_password": config_update.b1_password,
+        "b1_ssl_verify": config_update.b1_ssl_verify,
+        "b1_timeout_ms": config_update.b1_timeout_ms
+    }
+    
+    success = await sap.test_connection(test_config)
+    
+    return {
+        "success": success,
+        "message": "Connection successful" if success else "Connection failed",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+@api_router.post("/sap/activate")
+async def activate_sap_connection(current_user: User = Depends(require_role([UserRole.ADMIN]))):
+    current_config = await sap.get_config()
+    new_config = {**current_config, "sap_mode": "real"}
+    await sap.update_config(new_config)
+    
+    # Test the connection
+    login_success = await sap.login()
+    
+    return {
+        "success": login_success,
+        "mode": "real",
+        "message": "SAP real mode activated" if login_success else "SAP activation failed"
+    }
+
+@api_router.post("/sap/deactivate")
+async def deactivate_sap_connection(current_user: User = Depends(require_role([UserRole.ADMIN]))):
+    current_config = await sap.get_config()
+    new_config = {**current_config, "sap_mode": "mock", "connection_status": "disconnected"}
+    await sap.update_config(new_config)
+    
+    return {"success": True, "mode": "mock", "message": "SAP mock mode activated"}
+
 @api_router.get("/inventory")
 async def get_inventory(
     search: str = "",
@@ -370,7 +678,12 @@ async def get_customers(
     search: str = "",
     current_user: User = Depends(get_current_user)
 ):
-    result = await sap.get_customers(search)
+    # Sellers only see their assigned customers
+    salesperson_code = None
+    if current_user.role == UserRole.SELLER and current_user.sap_salesperson_code:
+        salesperson_code = current_user.sap_salesperson_code
+    
+    result = await sap.get_customers(search, salesperson_code)
     return {"customers": result}
 
 @api_router.post("/orders", response_model=Order)
@@ -445,43 +758,92 @@ async def get_sap_order_by_external_id(
 @api_router.get("/health/sap")
 async def sap_health_check(current_user: User = Depends(get_current_user)):
     try:
+        config = await sap.get_config()
         login_success = await sap.login()
         return {
             "status": "healthy" if login_success else "error",
-            "mode": SAP_MODE,
+            "mode": config["sap_mode"],
+            "connection_status": config.get("connection_status", "unknown"),
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
         return {
             "status": "error",
-            "mode": SAP_MODE,
+            "mode": "unknown",
             "error": str(e),
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
 @api_router.get("/dashboard/stats")
 async def get_dashboard_stats(current_user: User = Depends(get_current_user)):
-    # Basic KPIs for dashboard
     current_month = datetime.now(timezone.utc).replace(day=1)
     
-    # Count orders by status
-    order_stats = {}
-    for status in OrderStatus:
-        count = await db.orders.count_documents({"status": status.value})
-        order_stats[status.value] = count
-    
-    # Monthly sales (mock data for now)
-    monthly_sales = 125000.50
-    
-    # Pending sync count
-    pending_sync = await db.orders.count_documents({"status": OrderStatus.QUEUED.value})
-    
-    return {
-        "monthly_sales": monthly_sales,
-        "order_stats": order_stats,
-        "pending_sync": pending_sync,
-        "sap_mode": SAP_MODE
-    }
+    if current_user.role == UserRole.SELLER:
+        # Seller-specific dashboard
+        filter_condition = {"salesperson_code": current_user.sap_salesperson_code}
+        
+        # Count orders by status for this seller
+        order_stats = {}
+        for status in OrderStatus:
+            count = await db.orders.count_documents({**filter_condition, "status": status.value})
+            order_stats[status.value] = count
+        
+        # Calculate seller's monthly sales
+        monthly_orders = await db.orders.find({
+            **filter_condition,
+            "status": {"$in": [OrderStatus.SYNCED.value, OrderStatus.INVOICED.value]},
+            "created_at": {"$gte": current_month}
+        }).to_list(None)
+        
+        monthly_sales = sum(order.get("grand_total", 0) for order in monthly_orders)
+        
+        # Get seller's customers count
+        customers = await sap.get_customers("", current_user.sap_salesperson_code)
+        customer_count = len(customers)
+        
+        return {
+            "monthly_sales": monthly_sales,
+            "monthly_target": current_user.monthly_target,
+            "target_progress": (monthly_sales / current_user.monthly_target * 100) if current_user.monthly_target > 0 else 0,
+            "order_stats": order_stats,
+            "customer_count": customer_count,
+            "pending_sync": await db.orders.count_documents({**filter_condition, "status": OrderStatus.QUEUED.value}),
+            "user_role": "seller"
+        }
+    else:
+        # Admin/Supervisor dashboard - global view
+        order_stats = {}
+        for status in OrderStatus:
+            count = await db.orders.count_documents({"status": status.value})
+            order_stats[status.value] = count
+        
+        # Global monthly sales
+        monthly_orders = await db.orders.find({
+            "status": {"$in": [OrderStatus.SYNCED.value, OrderStatus.INVOICED.value]},
+            "created_at": {"$gte": current_month}
+        }).to_list(None)
+        
+        monthly_sales = sum(order.get("grand_total", 0) for order in monthly_orders)
+        
+        # Get total customers
+        customers = await sap.get_customers("")
+        customer_count = len(customers)
+        
+        # Get sellers count
+        sellers_count = await db.users.count_documents({"role": UserRole.SELLER.value})
+        
+        config = await sap.get_config()
+        
+        return {
+            "monthly_sales": monthly_sales,
+            "order_stats": order_stats,
+            "customer_count": customer_count,
+            "sellers_count": sellers_count,
+            "pending_sync": await db.orders.count_documents({"status": OrderStatus.QUEUED.value}),
+            "sap_mode": config["sap_mode"],
+            "sap_status": config.get("connection_status", "unknown"),
+            "user_role": "admin"
+        }
 
 # Background tasks
 async def sync_order_to_sap(order_id: str):
@@ -578,6 +940,8 @@ async def startup_event():
             "role": UserRole.ADMIN.value,
             "is_active": True,
             "sap_salesperson_code": 1,
+            "monthly_target": 0.0,
+            "assigned_customers": [],
             "created_at": datetime.now(timezone.utc),
             "updated_at": datetime.now(timezone.utc)
         }
@@ -595,11 +959,19 @@ async def startup_event():
             "role": UserRole.SELLER.value,
             "is_active": True,
             "sap_salesperson_code": 3,
+            "monthly_target": 50000.0,
+            "assigned_customers": ["C20003", "C20004", "C20006"],
             "created_at": datetime.now(timezone.utc),
             "updated_at": datetime.now(timezone.utc)
         }
         await db.users.insert_one(seller_data)
         logger.info("Created default seller user: vendedor@difratti.com / vendedor123")
+    
+    # Initialize SAP config
+    config_exists = await db.sap_config.find_one({})
+    if not config_exists:
+        await db.sap_config.insert_one(DEFAULT_SAP_CONFIG)
+        logger.info("Initialized SAP configuration")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
