@@ -375,6 +375,320 @@ class DifrattiAPITester:
             self.log_test("SAP Health Check", False, f"Exception: {str(e)}")
             return False
 
+    def test_sap_config_get(self, token):
+        """Test SAP configuration retrieval (Admin only)"""
+        try:
+            response = requests.get(
+                f"{self.api_url}/sap/config",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                sap_mode = data.get("sap_mode")
+                connection_status = data.get("connection_status")
+                
+                self.log_test(
+                    "SAP Config Get",
+                    True,
+                    f"Mode: {sap_mode}, Status: {connection_status}"
+                )
+                return data
+            elif response.status_code == 403:
+                self.log_test(
+                    "SAP Config Get",
+                    True,
+                    "Access denied (expected for non-admin users)"
+                )
+                return None
+            else:
+                self.log_test(
+                    "SAP Config Get",
+                    False,
+                    f"Status: {response.status_code}"
+                )
+                return None
+                
+        except Exception as e:
+            self.log_test("SAP Config Get", False, f"Exception: {str(e)}")
+            return None
+
+    def test_sap_config_update(self, token):
+        """Test SAP configuration update (Admin only)"""
+        try:
+            config_data = {
+                "b1_host": "https://test-sap-server.com:50000/b1s/v1",
+                "b1_company_db": "TEST_DB",
+                "b1_username": "test_user",
+                "b1_password": "test_password",
+                "b1_ssl_verify": True,
+                "b1_timeout_ms": 60000
+            }
+            
+            response = requests.post(
+                f"{self.api_url}/sap/config",
+                json=config_data,
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                message = data.get("message")
+                
+                self.log_test(
+                    "SAP Config Update",
+                    True,
+                    f"Message: {message}"
+                )
+                return True
+            elif response.status_code == 403:
+                self.log_test(
+                    "SAP Config Update",
+                    True,
+                    "Access denied (expected for non-admin users)"
+                )
+                return False
+            else:
+                self.log_test(
+                    "SAP Config Update",
+                    False,
+                    f"Status: {response.status_code}"
+                )
+                return False
+                
+        except Exception as e:
+            self.log_test("SAP Config Update", False, f"Exception: {str(e)}")
+            return False
+
+    def test_sap_test_connection(self, token):
+        """Test SAP connection testing (Admin only)"""
+        try:
+            config_data = {
+                "b1_host": "https://test-sap-server.com:50000/b1s/v1",
+                "b1_company_db": "TEST_DB",
+                "b1_username": "test_user",
+                "b1_password": "test_password",
+                "b1_ssl_verify": True,
+                "b1_timeout_ms": 60000
+            }
+            
+            response = requests.post(
+                f"{self.api_url}/sap/test-connection",
+                json=config_data,
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=15
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                success = data.get("success")
+                message = data.get("message")
+                
+                self.log_test(
+                    "SAP Test Connection",
+                    True,
+                    f"Success: {success}, Message: {message}"
+                )
+                return success
+            elif response.status_code == 403:
+                self.log_test(
+                    "SAP Test Connection",
+                    True,
+                    "Access denied (expected for non-admin users)"
+                )
+                return False
+            else:
+                self.log_test(
+                    "SAP Test Connection",
+                    False,
+                    f"Status: {response.status_code}"
+                )
+                return False
+                
+        except Exception as e:
+            self.log_test("SAP Test Connection", False, f"Exception: {str(e)}")
+            return False
+
+    def test_sap_activate(self, token):
+        """Test SAP activation (Admin only)"""
+        try:
+            response = requests.post(
+                f"{self.api_url}/sap/activate",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=15
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                success = data.get("success")
+                mode = data.get("mode")
+                message = data.get("message")
+                
+                self.log_test(
+                    "SAP Activate",
+                    True,
+                    f"Success: {success}, Mode: {mode}, Message: {message}"
+                )
+                return success
+            elif response.status_code == 403:
+                self.log_test(
+                    "SAP Activate",
+                    True,
+                    "Access denied (expected for non-admin users)"
+                )
+                return False
+            else:
+                self.log_test(
+                    "SAP Activate",
+                    False,
+                    f"Status: {response.status_code}"
+                )
+                return False
+                
+        except Exception as e:
+            self.log_test("SAP Activate", False, f"Exception: {str(e)}")
+            return False
+
+    def test_sap_deactivate(self, token):
+        """Test SAP deactivation (Admin only)"""
+        try:
+            response = requests.post(
+                f"{self.api_url}/sap/deactivate",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                success = data.get("success")
+                mode = data.get("mode")
+                message = data.get("message")
+                
+                self.log_test(
+                    "SAP Deactivate",
+                    True,
+                    f"Success: {success}, Mode: {mode}, Message: {message}"
+                )
+                return success
+            elif response.status_code == 403:
+                self.log_test(
+                    "SAP Deactivate",
+                    True,
+                    "Access denied (expected for non-admin users)"
+                )
+                return False
+            else:
+                self.log_test(
+                    "SAP Deactivate",
+                    False,
+                    f"Status: {response.status_code}"
+                )
+                return False
+                
+        except Exception as e:
+            self.log_test("SAP Deactivate", False, f"Exception: {str(e)}")
+            return False
+
+    def test_role_based_dashboard(self, admin_token, seller_token):
+        """Test role-based dashboard differences"""
+        try:
+            # Test admin dashboard
+            admin_response = requests.get(
+                f"{self.api_url}/dashboard/stats",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                timeout=10
+            )
+            
+            # Test seller dashboard
+            seller_response = requests.get(
+                f"{self.api_url}/dashboard/stats",
+                headers={"Authorization": f"Bearer {seller_token}"},
+                timeout=10
+            )
+            
+            if admin_response.status_code == 200 and seller_response.status_code == 200:
+                admin_data = admin_response.json()
+                seller_data = seller_response.json()
+                
+                # Check admin has global data
+                admin_has_sap_mode = "sap_mode" in admin_data
+                admin_has_sellers_count = "sellers_count" in admin_data
+                admin_role = admin_data.get("user_role")
+                
+                # Check seller has personal data
+                seller_has_target = "monthly_target" in seller_data
+                seller_has_progress = "target_progress" in seller_data
+                seller_role = seller_data.get("user_role")
+                
+                success = (admin_has_sap_mode and admin_has_sellers_count and 
+                          seller_has_target and seller_has_progress and
+                          admin_role == "admin" and seller_role == "seller")
+                
+                self.log_test(
+                    "Role-based Dashboard",
+                    success,
+                    f"Admin role: {admin_role}, Seller role: {seller_role}, Admin SAP: {admin_has_sap_mode}, Seller target: {seller_has_target}"
+                )
+                return success
+            else:
+                self.log_test(
+                    "Role-based Dashboard",
+                    False,
+                    f"Admin status: {admin_response.status_code}, Seller status: {seller_response.status_code}"
+                )
+                return False
+                
+        except Exception as e:
+            self.log_test("Role-based Dashboard", False, f"Exception: {str(e)}")
+            return False
+
+    def test_role_based_customers(self, admin_token, seller_token):
+        """Test role-based customer filtering"""
+        try:
+            # Test admin customers (should see all)
+            admin_response = requests.get(
+                f"{self.api_url}/customers",
+                headers={"Authorization": f"Bearer {admin_token}"},
+                timeout=10
+            )
+            
+            # Test seller customers (should see only assigned)
+            seller_response = requests.get(
+                f"{self.api_url}/customers",
+                headers={"Authorization": f"Bearer {seller_token}"},
+                timeout=10
+            )
+            
+            if admin_response.status_code == 200 and seller_response.status_code == 200:
+                admin_customers = admin_response.json().get("customers", [])
+                seller_customers = seller_response.json().get("customers", [])
+                
+                # Admin should see more or equal customers than seller
+                admin_count = len(admin_customers)
+                seller_count = len(seller_customers)
+                
+                success = admin_count >= seller_count
+                
+                self.log_test(
+                    "Role-based Customer Filtering",
+                    success,
+                    f"Admin customers: {admin_count}, Seller customers: {seller_count}"
+                )
+                return success
+            else:
+                self.log_test(
+                    "Role-based Customer Filtering",
+                    False,
+                    f"Admin status: {admin_response.status_code}, Seller status: {seller_response.status_code}"
+                )
+                return False
+                
+        except Exception as e:
+            self.log_test("Role-based Customer Filtering", False, f"Exception: {str(e)}")
+            return False
+
     def run_all_tests(self):
         """Run all backend tests"""
         print("🚀 Starting Difratti Sales System Backend Tests")
