@@ -1112,6 +1112,17 @@ async def get_order(
     if "customer_name" not in order:
         order["customer_name"] = f"Customer {order.get('card_code', 'Unknown')}"
     
+    # Handle sap_docnum type conversion (from string to int if needed)
+    if "sap_docnum" in order and isinstance(order["sap_docnum"], str):
+        try:
+            # Try to extract number from string like "SO-2025-001"
+            if order["sap_docnum"].startswith("SO-"):
+                order["sap_docnum"] = int(order["sap_docnum"].split("-")[-1])
+            else:
+                order["sap_docnum"] = int(order["sap_docnum"])
+        except (ValueError, IndexError):
+            order["sap_docnum"] = None
+    
     # Get order lines
     lines = await db.order_lines.find({"order_id": order_id}, {"_id": 0}).to_list(None)
     order_obj = Order(**order)
