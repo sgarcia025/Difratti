@@ -449,7 +449,7 @@ const UserManagement = () => {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => setEditingUser(user)}
+                    onClick={() => startEditUser(user)}
                   >
                     <Edit className="w-4 h-4" />
                   </Button>
