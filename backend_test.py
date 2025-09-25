@@ -258,6 +258,7 @@ class DifrattiAPITester:
             order_data = {
                 "external_id": f"TEST-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
                 "card_code": "C20001",
+                "customer_name": "Empresa Tecnológica S.A.",
                 "doc_date": datetime.now().strftime("%Y-%m-%d"),
                 "doc_due_date": datetime.now().strftime("%Y-%m-%d"),
                 "salesperson_code": 1,
