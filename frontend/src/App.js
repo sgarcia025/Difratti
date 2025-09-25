@@ -1302,6 +1302,8 @@ const Dashboard = () => {
   const [showQuoteForm, setShowQuoteForm] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedSalesperson, setSelectedSalesperson] = useState('all');
+  const [salespeople, setSalespeople] = useState([]);
 
   useEffect(() => {
     loadDashboardStats();
