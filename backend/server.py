@@ -16,6 +16,7 @@ import uuid
 import asyncio
 import httpx
 from pathlib import Path
+import calendar
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -65,7 +66,8 @@ class OrderStatus(str, Enum):
     ERROR = "error"
 
 class QuoteStatus(str, Enum):
-    OPEN = "open"
+    DRAFT = "draft"
+    SENT = "sent"
     WON = "won"
     LOST = "lost"
     EXPIRED = "expired"
@@ -97,6 +99,15 @@ class UserCreate(BaseModel):
     role: UserRole
     sap_salesperson_code: Optional[int] = None
     monthly_target: Optional[float] = 0.0
+    assigned_customers: List[str] = Field(default_factory=list)
+
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    role: Optional[UserRole] = None
+    is_active: Optional[bool] = None
+    sap_salesperson_code: Optional[int] = None
+    monthly_target: Optional[float] = None
+    assigned_customers: Optional[List[str]] = None
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -152,6 +163,49 @@ class ItemStock(BaseModel):
     ordered: float = 0.0
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+class QuoteLine(BaseModel):
+    item_code: str
+    description: str
+    quantity: float
+    unit_price: float
+    discount_pct: float = 0.0
+    warehouse_code: str
+    tax_code: Optional[str] = None
+    line_total: float
+
+class QuoteCreate(BaseModel):
+    card_code: str
+    customer_name: str
+    contact_person: Optional[str] = None
+    comments: Optional[str] = None
+    valid_until: str
+    lines: List[QuoteLine]
+    shipping_address: Optional[str] = None
+    billing_address: Optional[str] = None
+
+class Quote(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    quote_number: str
+    card_code: str
+    customer_name: str
+    contact_person: Optional[str] = None
+    salesperson_code: int
+    status: QuoteStatus = QuoteStatus.DRAFT
+    total_before_tax: float = 0.0
+    tax_total: float = 0.0
+    grand_total: float = 0.0
+    currency: str = "GTQ"
+    valid_until: datetime
+    comments: Optional[str] = None
+    shipping_address: Optional[str] = None
+    billing_address: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class QuoteStatusUpdate(BaseModel):
+    status: QuoteStatus
+    comments: Optional[str] = None
+
 class OrderLine(BaseModel):
     item_code: str
     description: str
@@ -163,21 +217,24 @@ class OrderLine(BaseModel):
     line_total: float
 
 class OrderCreate(BaseModel):
-    external_id: str
     card_code: str
+    customer_name: str
+    contact_person: Optional[str] = None
     doc_date: str
     doc_due_date: str
-    salesperson_code: int
     comments: Optional[str] = None
     lines: List[OrderLine]
-    ship_to: Optional[Dict[str, Any]] = None
-    bill_to: Optional[Dict[str, Any]] = None
-    udfs: Optional[Dict[str, Any]] = None
+    shipping_address: Optional[str] = None
+    billing_address: Optional[str] = None
+    payment_terms: Optional[str] = None
+    priority: str = "Normal"
 
 class Order(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     external_id: str
     card_code: str
+    customer_name: str
+    contact_person: Optional[str] = None
     salesperson_code: int
     status: OrderStatus = OrderStatus.DRAFT
     sap_docentry: Optional[int] = None
@@ -189,6 +246,10 @@ class Order(BaseModel):
     currency: str = "GTQ"
     source: str = "web"
     channel: str = "D2D"
+    priority: str = "Normal"
+    payment_terms: Optional[str] = None
+    shipping_address: Optional[str] = None
+    billing_address: Optional[str] = None
     error_message: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -313,7 +374,8 @@ class SAPServiceLayer:
                             "ItemName": item.get("ItemName"),
                             "UOM": item.get("UoMEntry"),
                             "IsActive": True,
-                            "Stock": item.get("QuantityOnStock", 0)
+                            "Stock": item.get("QuantityOnStock", 0),
+                            "Price": 0.0  # Would need to get from price list
                         })
                     return {
                         "items": items,
@@ -442,13 +504,13 @@ class SAPServiceLayer:
 
     def _mock_items(self, search: str, page: int, page_size: int):
         mock_items = [
-            {"ItemCode": "A00001", "ItemName": "Laptop HP Pavilion 15", "UOM": "Each", "IsActive": True, "Stock": 25},
-            {"ItemCode": "A00002", "ItemName": "Mouse Inalámbrico Logitech", "UOM": "Each", "IsActive": True, "Stock": 150},
-            {"ItemCode": "A00003", "ItemName": "Teclado Mecánico RGB", "UOM": "Each", "IsActive": True, "Stock": 75},
-            {"ItemCode": "A00004", "ItemName": "Monitor 24 pulgadas LG", "UOM": "Each", "IsActive": True, "Stock": 40},
-            {"ItemCode": "A00005", "ItemName": "Impresora Multifuncional Canon", "UOM": "Each", "IsActive": True, "Stock": 30},
-            {"ItemCode": "A00006", "ItemName": "Disco Duro Externo 1TB", "UOM": "Each", "IsActive": True, "Stock": 60},
-            {"ItemCode": "A00007", "ItemName": "Webcam HD Logitech", "UOM": "Each", "IsActive": True, "Stock": 85}
+            {"ItemCode": "A00001", "ItemName": "Laptop HP Pavilion 15", "UOM": "Each", "IsActive": True, "Stock": 25, "Price": 8500.00},
+            {"ItemCode": "A00002", "ItemName": "Mouse Inalámbrico Logitech", "UOM": "Each", "IsActive": True, "Stock": 150, "Price": 450.00},
+            {"ItemCode": "A00003", "ItemName": "Teclado Mecánico RGB", "UOM": "Each", "IsActive": True, "Stock": 75, "Price": 1200.00},
+            {"ItemCode": "A00004", "ItemName": "Monitor 24 pulgadas LG", "UOM": "Each", "IsActive": True, "Stock": 40, "Price": 2500.00},
+            {"ItemCode": "A00005", "ItemName": "Impresora Multifuncional Canon", "UOM": "Each", "IsActive": True, "Stock": 30, "Price": 3200.00},
+            {"ItemCode": "A00006", "ItemName": "Disco Duro Externo 1TB", "UOM": "Each", "IsActive": True, "Stock": 60, "Price": 750.00},
+            {"ItemCode": "A00007", "ItemName": "Webcam HD Logitech", "UOM": "Each", "IsActive": True, "Stock": 85, "Price": 650.00}
         ]
         
         if search:
@@ -533,6 +595,17 @@ def require_role(allowed_roles: List[UserRole]):
         return current_user
     return role_checker
 
+# Utility functions
+def generate_quote_number() -> str:
+    """Generate a unique quote number"""
+    now = datetime.now(timezone.utc)
+    return f"COT-{now.strftime('%Y%m%d')}-{str(uuid.uuid4())[:8].upper()}"
+
+def generate_external_id() -> str:
+    """Generate a unique external ID for orders"""
+    now = datetime.now(timezone.utc)
+    return f"WEB-{now.strftime('%Y%m%d')}-{str(uuid.uuid4())[:8].upper()}"
+
 # API Routes
 
 @api_router.post("/auth/login", response_model=Token)
@@ -585,6 +658,69 @@ async def refresh_token(refresh_token: str):
 @api_router.get("/auth/me", response_model=User)
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
     return current_user
+
+# User Management (Admin only)
+@api_router.get("/users")
+async def get_users(current_user: User = Depends(require_role([UserRole.ADMIN]))):
+    users = await db.users.find({}, {"password_hash": 0}).to_list(None)
+    return [User(**user) for user in users]
+
+@api_router.post("/users", response_model=User)
+async def create_user(
+    user_data: UserCreate,
+    current_user: User = Depends(require_role([UserRole.ADMIN]))
+):
+    # Check if user already exists
+    existing_user = await db.users.find_one({"email": user_data.email})
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Create new user
+    user_dict = user_data.dict()
+    user_dict["password_hash"] = get_password_hash(user_dict.pop("password"))
+    user_dict["id"] = str(uuid.uuid4())
+    user_dict["created_at"] = datetime.now(timezone.utc)
+    user_dict["updated_at"] = datetime.now(timezone.utc)
+    
+    await db.users.insert_one(user_dict)
+    
+    # Return user without password
+    user_dict.pop("password_hash")
+    return User(**user_dict)
+
+@api_router.put("/users/{user_id}", response_model=User)
+async def update_user(
+    user_id: str,
+    user_update: UserUpdate,
+    current_user: User = Depends(require_role([UserRole.ADMIN]))
+):
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    update_data = {k: v for k, v in user_update.dict().items() if v is not None}
+    update_data["updated_at"] = datetime.now(timezone.utc)
+    
+    await db.users.update_one({"id": user_id}, {"$set": update_data})
+    
+    updated_user = await db.users.find_one({"id": user_id}, {"password_hash": 0})
+    return User(**updated_user)
+
+@api_router.delete("/users/{user_id}")
+async def delete_user(
+    user_id: str,
+    current_user: User = Depends(require_role([UserRole.ADMIN]))
+):
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Don't allow deleting the current user
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    
+    await db.users.delete_one({"id": user_id})
+    return {"message": "User deleted successfully"}
 
 # SAP Configuration endpoints (Admin only)
 @api_router.get("/sap/config")
@@ -695,6 +831,176 @@ async def get_customers(
     result = await sap.get_customers(search, salesperson_code)
     return {"customers": result}
 
+# Quotes endpoints
+@api_router.post("/quotes", response_model=Quote)
+async def create_quote(
+    quote_data: QuoteCreate,
+    current_user: User = Depends(get_current_user)
+):
+    # Calculate totals
+    total_before_tax = sum(line.line_total for line in quote_data.lines)
+    tax_total = total_before_tax * 0.12  # Assuming 12% IVA
+    grand_total = total_before_tax + tax_total
+    
+    # Create quote record
+    quote = Quote(
+        quote_number=generate_quote_number(),
+        card_code=quote_data.card_code,
+        customer_name=quote_data.customer_name,
+        contact_person=quote_data.contact_person,
+        salesperson_code=current_user.sap_salesperson_code or 1,
+        status=QuoteStatus.DRAFT,
+        total_before_tax=total_before_tax,
+        tax_total=tax_total,
+        grand_total=grand_total,
+        valid_until=datetime.fromisoformat(quote_data.valid_until),
+        comments=quote_data.comments,
+        shipping_address=quote_data.shipping_address,
+        billing_address=quote_data.billing_address
+    )
+    
+    # Save to database
+    quote_dict = quote.dict()
+    await db.quotes.insert_one(quote_dict)
+    
+    # Save quote lines
+    for line in quote_data.lines:
+        line_dict = line.dict()
+        line_dict["quote_id"] = quote.id
+        line_dict["id"] = str(uuid.uuid4())
+        await db.quote_lines.insert_one(line_dict)
+    
+    return quote
+
+@api_router.get("/quotes")
+async def get_quotes(
+    status: Optional[QuoteStatus] = None,
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    current_user: User = Depends(get_current_user)
+):
+    # Build filter
+    filter_condition = {}
+    
+    # Role-based filtering
+    if current_user.role == UserRole.SELLER:
+        filter_condition["salesperson_code"] = current_user.sap_salesperson_code
+    
+    # Status filtering
+    if status:
+        filter_condition["status"] = status.value
+    
+    # Date filtering
+    if month and year:
+        start_date = datetime(year, month, 1, tzinfo=timezone.utc)
+        if month == 12:
+            end_date = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+        else:
+            end_date = datetime(year, month + 1, 1, tzinfo=timezone.utc)
+        
+        filter_condition["created_at"] = {"$gte": start_date, "$lt": end_date}
+    
+    quotes = await db.quotes.find(filter_condition).sort("created_at", -1).to_list(None)
+    
+    # Get quote lines for each quote
+    result = []
+    for quote in quotes:
+        quote_obj = Quote(**quote)
+        lines = await db.quote_lines.find({"quote_id": quote["id"]}).to_list(None)
+        quote_dict = quote_obj.dict()
+        quote_dict["lines"] = lines
+        result.append(quote_dict)
+    
+    return {"quotes": result}
+
+@api_router.put("/quotes/{quote_id}/status")
+async def update_quote_status(
+    quote_id: str,
+    status_update: QuoteStatusUpdate,
+    current_user: User = Depends(get_current_user)
+):
+    quote = await db.quotes.find_one({"id": quote_id})
+    if not quote:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    
+    # Check permissions
+    if current_user.role == UserRole.SELLER and quote["salesperson_code"] != current_user.sap_salesperson_code:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    update_data = {
+        "status": status_update.status.value,
+        "updated_at": datetime.now(timezone.utc)
+    }
+    
+    if status_update.comments:
+        update_data["comments"] = status_update.comments
+    
+    await db.quotes.update_one({"id": quote_id}, {"$set": update_data})
+    
+    return {"message": "Quote status updated successfully"}
+
+@api_router.post("/quotes/{quote_id}/convert-to-order")
+async def convert_quote_to_order(
+    quote_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    quote = await db.quotes.find_one({"id": quote_id})
+    if not quote:
+        raise HTTPException(status_code=404, detail="Quote not found")
+    
+    # Check permissions
+    if current_user.role == UserRole.SELLER and quote["salesperson_code"] != current_user.sap_salesperson_code:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Get quote lines
+    quote_lines = await db.quote_lines.find({"quote_id": quote_id}).to_list(None)
+    
+    # Create order
+    order = Order(
+        external_id=generate_external_id(),
+        card_code=quote["card_code"],
+        customer_name=quote["customer_name"],
+        contact_person=quote.get("contact_person"),
+        salesperson_code=quote["salesperson_code"],
+        status=OrderStatus.QUEUED,
+        total_before_tax=quote["total_before_tax"],
+        tax_total=quote["tax_total"],
+        grand_total=quote["grand_total"],
+        shipping_address=quote.get("shipping_address"),
+        billing_address=quote.get("billing_address")
+    )
+    
+    # Save order
+    order_dict = order.dict()
+    await db.orders.insert_one(order_dict)
+    
+    # Save order lines
+    for line in quote_lines:
+        line_dict = {
+            "id": str(uuid.uuid4()),
+            "order_id": order.id,
+            "item_code": line["item_code"],
+            "description": line["description"],
+            "quantity": line["quantity"],
+            "unit_price": line["unit_price"],
+            "discount_pct": line["discount_pct"],
+            "warehouse_code": line["warehouse_code"],
+            "tax_code": line.get("tax_code"),
+            "line_total": line["line_total"]
+        }
+        await db.order_lines.insert_one(line_dict)
+    
+    # Update quote status
+    await db.quotes.update_one(
+        {"id": quote_id},
+        {"$set": {"status": QuoteStatus.WON.value, "updated_at": datetime.now(timezone.utc)}}
+    )
+    
+    # Queue for SAP sync
+    asyncio.create_task(sync_order_to_sap(order.id))
+    
+    return {"message": "Quote converted to order successfully", "order_id": order.id}
+
 @api_router.post("/orders", response_model=Order)
 async def create_order(
     order_data: OrderCreate,
@@ -707,23 +1013,68 @@ async def create_order(
     
     # Create order record
     order = Order(
-        external_id=order_data.external_id,
+        external_id=generate_external_id(),
         card_code=order_data.card_code,
-        salesperson_code=order_data.salesperson_code,
+        customer_name=order_data.customer_name,
+        contact_person=order_data.contact_person,
+        salesperson_code=current_user.sap_salesperson_code or 1,
         status=OrderStatus.QUEUED,
         total_before_tax=total_before_tax,
         tax_total=tax_total,
-        grand_total=grand_total
+        grand_total=grand_total,
+        priority=order_data.priority,
+        payment_terms=order_data.payment_terms,
+        shipping_address=order_data.shipping_address,
+        billing_address=order_data.billing_address
     )
     
     # Save to database
     order_dict = order.dict()
     await db.orders.insert_one(order_dict)
     
+    # Save order lines
+    for line in order_data.lines:
+        line_dict = line.dict()
+        line_dict["order_id"] = order.id
+        line_dict["id"] = str(uuid.uuid4())
+        await db.order_lines.insert_one(line_dict)
+    
     # Queue for SAP sync (in a real app, this would use a job queue)
     asyncio.create_task(sync_order_to_sap(order.id))
     
     return order
+
+@api_router.get("/orders")
+async def get_orders(
+    status: Optional[OrderStatus] = None,
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    current_user: User = Depends(get_current_user)
+):
+    # Build filter
+    filter_condition = {}
+    
+    # Role-based filtering
+    if current_user.role == UserRole.SELLER:
+        filter_condition["salesperson_code"] = current_user.sap_salesperson_code
+    
+    # Status filtering
+    if status:
+        filter_condition["status"] = status.value
+    
+    # Date filtering
+    if month and year:
+        start_date = datetime(year, month, 1, tzinfo=timezone.utc)
+        if month == 12:
+            end_date = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+        else:
+            end_date = datetime(year, month + 1, 1, tzinfo=timezone.utc)
+        
+        filter_condition["created_at"] = {"$gte": start_date, "$lt": end_date}
+    
+    orders = await db.orders.find(filter_condition).sort("created_at", -1).to_list(None)
+    
+    return {"orders": [Order(**order) for order in orders]}
 
 @api_router.get("/orders/{order_id}")
 async def get_order(
@@ -733,7 +1084,18 @@ async def get_order(
     order = await db.orders.find_one({"id": order_id})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-    return Order(**order)
+    
+    # Check permissions
+    if current_user.role == UserRole.SELLER and order["salesperson_code"] != current_user.sap_salesperson_code:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Get order lines
+    lines = await db.order_lines.find({"order_id": order_id}).to_list(None)
+    order_obj = Order(**order)
+    order_dict = order_obj.dict()
+    order_dict["lines"] = lines
+    
+    return order_dict
 
 @api_router.post("/orders/{order_id}/retry")
 async def retry_order_sync(
@@ -784,8 +1146,23 @@ async def sap_health_check(current_user: User = Depends(get_current_user)):
         }
 
 @api_router.get("/dashboard/stats")
-async def get_dashboard_stats(current_user: User = Depends(get_current_user)):
-    current_month = datetime.now(timezone.utc).replace(day=1)
+async def get_dashboard_stats(
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    current_user: User = Depends(get_current_user)
+):
+    # Default to current month if not specified
+    if not month or not year:
+        now = datetime.now(timezone.utc)
+        month = now.month
+        year = now.year
+    
+    # Calculate month range
+    start_date = datetime(year, month, 1, tzinfo=timezone.utc)
+    if month == 12:
+        end_date = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+    else:
+        end_date = datetime(year, month + 1, 1, tzinfo=timezone.utc)
     
     if current_user.role == UserRole.SELLER:
         # Seller-specific dashboard
@@ -797,14 +1174,33 @@ async def get_dashboard_stats(current_user: User = Depends(get_current_user)):
             count = await db.orders.count_documents({**filter_condition, "status": status.value})
             order_stats[status.value] = count
         
+        # Count quotes by status for this seller
+        quote_stats = {}
+        for status in QuoteStatus:
+            count = await db.quotes.count_documents({**filter_condition, "status": status.value})
+            quote_stats[status.value] = count
+        
         # Calculate seller's monthly sales
         monthly_orders = await db.orders.find({
             **filter_condition,
             "status": {"$in": [OrderStatus.SYNCED.value, OrderStatus.INVOICED.value]},
-            "created_at": {"$gte": current_month}
+            "created_at": {"$gte": start_date, "$lt": end_date}
         }).to_list(None)
         
         monthly_sales = sum(order.get("grand_total", 0) for order in monthly_orders)
+        
+        # Calculate quote conversion rate
+        total_quotes = await db.quotes.count_documents({
+            **filter_condition,
+            "created_at": {"$gte": start_date, "$lt": end_date}
+        })
+        won_quotes = await db.quotes.count_documents({
+            **filter_condition,
+            "status": QuoteStatus.WON.value,
+            "created_at": {"$gte": start_date, "$lt": end_date}
+        })
+        
+        conversion_rate = (won_quotes / total_quotes * 100) if total_quotes > 0 else 0
         
         # Get seller's customers count
         customers = await sap.get_customers("", current_user.sap_salesperson_code)
@@ -815,9 +1211,15 @@ async def get_dashboard_stats(current_user: User = Depends(get_current_user)):
             "monthly_target": current_user.monthly_target,
             "target_progress": (monthly_sales / current_user.monthly_target * 100) if current_user.monthly_target > 0 else 0,
             "order_stats": order_stats,
+            "quote_stats": quote_stats,
+            "quote_conversion_rate": conversion_rate,
+            "total_quotes_month": total_quotes,
             "customer_count": customer_count,
             "pending_sync": await db.orders.count_documents({**filter_condition, "status": OrderStatus.QUEUED.value}),
-            "user_role": "seller"
+            "user_role": "seller",
+            "current_month": month,
+            "current_year": year,
+            "month_name": calendar.month_name[month]
         }
     else:
         # Admin/Supervisor dashboard - global view
@@ -826,13 +1228,29 @@ async def get_dashboard_stats(current_user: User = Depends(get_current_user)):
             count = await db.orders.count_documents({"status": status.value})
             order_stats[status.value] = count
         
+        quote_stats = {}
+        for status in QuoteStatus:
+            count = await db.quotes.count_documents({"status": status.value})
+            quote_stats[status.value] = count
+        
         # Global monthly sales
         monthly_orders = await db.orders.find({
             "status": {"$in": [OrderStatus.SYNCED.value, OrderStatus.INVOICED.value]},
-            "created_at": {"$gte": current_month}
+            "created_at": {"$gte": start_date, "$lt": end_date}
         }).to_list(None)
         
         monthly_sales = sum(order.get("grand_total", 0) for order in monthly_orders)
+        
+        # Global quote conversion
+        total_quotes = await db.quotes.count_documents({
+            "created_at": {"$gte": start_date, "$lt": end_date}
+        })
+        won_quotes = await db.quotes.count_documents({
+            "status": QuoteStatus.WON.value,
+            "created_at": {"$gte": start_date, "$lt": end_date}
+        })
+        
+        conversion_rate = (won_quotes / total_quotes * 100) if total_quotes > 0 else 0
         
         # Get total customers
         customers = await sap.get_customers("")
@@ -846,12 +1264,18 @@ async def get_dashboard_stats(current_user: User = Depends(get_current_user)):
         return {
             "monthly_sales": monthly_sales,
             "order_stats": order_stats,
+            "quote_stats": quote_stats,
+            "quote_conversion_rate": conversion_rate,
+            "total_quotes_month": total_quotes,
             "customer_count": customer_count,
             "sellers_count": sellers_count,
             "pending_sync": await db.orders.count_documents({"status": OrderStatus.QUEUED.value}),
             "sap_mode": config["sap_mode"],
             "sap_status": config.get("connection_status", "unknown"),
-            "user_role": "admin"
+            "user_role": "admin",
+            "current_month": month,
+            "current_year": year,
+            "month_name": calendar.month_name[month]
         }
 
 # Background tasks
@@ -876,6 +1300,9 @@ async def sync_order_to_sap(order_id: str):
             )
             return
         
+        # Get order lines
+        order_lines = await db.order_lines.find({"order_id": order_id}).to_list(None)
+        
         # Create in SAP
         sap_data = {
             "CardCode": order["card_code"],
@@ -883,8 +1310,21 @@ async def sync_order_to_sap(order_id: str):
             "DocDueDate": datetime.now().strftime("%Y-%m-%d"),
             "Comments": f"Pedido desde portal - {order['external_id']}",
             "SalesPersonCode": order["salesperson_code"],
-            "U_ExternalId": order["external_id"]
+            "U_ExternalId": order["external_id"],
+            "DocumentLines": []
         }
+        
+        # Add document lines
+        for line in order_lines:
+            sap_line = {
+                "ItemCode": line["item_code"],
+                "Quantity": line["quantity"],
+                "UnitPrice": line["unit_price"],
+                "WarehouseCode": line["warehouse_code"],
+                "TaxCode": line.get("tax_code", "IVA"),
+                "DiscountPercent": line["discount_pct"]
+            }
+            sap_data["DocumentLines"].append(sap_line)
         
         result = await sap.create_order(sap_data)
         
