@@ -264,17 +264,62 @@ const UserManagement = () => {
   };
 
   const updateUser = async (userId, updates) => {
+    setEditLoading(true);
     try {
       const token = localStorage.getItem('access_token');
-      await axios.put(`${API}/users/${userId}`, updates, {
+      
+      // Prepare updates object
+      const updateData = {};
+      if (updates.full_name) updateData.full_name = updates.full_name;
+      if (updates.role) updateData.role = updates.role;
+      if (updates.is_active !== undefined) updateData.is_active = updates.is_active;
+      if (updates.sap_salesperson_code) updateData.sap_salesperson_code = parseInt(updates.sap_salesperson_code);
+      if (updates.monthly_target) updateData.monthly_target = parseFloat(updates.monthly_target);
+      if (updates.assigned_customers) updateData.assigned_customers = updates.assigned_customers;
+      
+      await axios.put(`${API}/users/${userId}`, updateData, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      
       loadUsers();
       setEditingUser(null);
+      setEditForm({
+        full_name: '',
+        role: '',
+        is_active: true,
+        sap_salesperson_code: '',
+        monthly_target: '',
+        assigned_customers: []
+      });
       alert('Usuario actualizado exitosamente');
     } catch (error) {
       alert('Error al actualizar usuario: ' + (error.response?.data?.detail || error.message));
     }
+    setEditLoading(false);
+  };
+
+  const startEditUser = (user) => {
+    setEditingUser(user);
+    setEditForm({
+      full_name: user.full_name || '',
+      role: user.role || '',
+      is_active: user.is_active !== false,
+      sap_salesperson_code: user.sap_salesperson_code?.toString() || '',
+      monthly_target: user.monthly_target?.toString() || '',
+      assigned_customers: user.assigned_customers || []
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingUser(null);
+    setEditForm({
+      full_name: '',
+      role: '',
+      is_active: true,
+      sap_salesperson_code: '',
+      monthly_target: '',
+      assigned_customers: []
+    });
   };
 
   const deleteUser = async (userId) => {
