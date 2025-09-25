@@ -205,7 +205,16 @@ const UserManagement = () => {
     monthly_target: ''
   });
   const [editingUser, setEditingUser] = useState(null);
+  const [editForm, setEditForm] = useState({
+    full_name: '',
+    role: '',
+    is_active: true,
+    sap_salesperson_code: '',
+    monthly_target: '',
+    assigned_customers: []
+  });
   const [loading, setLoading] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
 
   useEffect(() => {
     loadUsers();
