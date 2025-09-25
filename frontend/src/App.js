@@ -1686,7 +1686,9 @@ const Dashboard = () => {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-blue-100">Ventas del Mes</p>
+                    <p className="text-blue-100">
+                      {selectedSalesperson === 'all' ? 'Ventas del Mes' : 'Ventas del Vendedor'}
+                    </p>
                     <p className="text-3xl font-bold">Q{stats?.monthly_sales?.toLocaleString() || '0'}</p>
                   </div>
                   <BarChart3 className="w-8 h-8 text-blue-200" />
@@ -1698,7 +1700,9 @@ const Dashboard = () => {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-emerald-100">Total Clientes</p>
+                    <p className="text-emerald-100">
+                      {selectedSalesperson === 'all' ? 'Total Clientes' : 'Clientes Asignados'}
+                    </p>
                     <p className="text-3xl font-bold">{stats?.customer_count || 0}</p>
                   </div>
                   <Users className="w-8 h-8 text-emerald-200" />
@@ -1710,10 +1714,21 @@ const Dashboard = () => {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-purple-100">Vendedores</p>
-                    <p className="text-3xl font-bold">{stats?.sellers_count || 0}</p>
+                    <p className="text-purple-100">
+                      {selectedSalesperson === 'all' ? 'Vendedores' : 'Meta Mensual'}
+                    </p>
+                    <p className="text-3xl font-bold">
+                      {selectedSalesperson === 'all' 
+                        ? (stats?.sellers_count || 0)
+                        : `Q${stats?.monthly_target?.toLocaleString() || '0'}`
+                      }
+                    </p>
                   </div>
-                  <Users className="w-8 h-8 text-purple-200" />
+                  {selectedSalesperson === 'all' ? (
+                    <Users className="w-8 h-8 text-purple-200" />
+                  ) : (
+                    <Target className="w-8 h-8 text-purple-200" />
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -1732,11 +1747,50 @@ const Dashboard = () => {
           </div>
           
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
+            {/* Show target progress if specific salesperson selected */}
+            {selectedSalesperson !== 'all' && stats?.monthly_target > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Target className="w-5 h-5" />
+                    Progreso de Meta - {stats?.salesperson_name}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div className="flex justify-between text-sm">
+                      <span>Progreso actual</span>
+                      <span>{Math.round(stats?.target_progress || 0)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-3">
+                      <div 
+                        className="bg-emerald-500 h-3 rounded-full transition-all duration-300"
+                        style={{ width: `${Math.min(stats?.target_progress || 0, 100)}%` }}
+                      ></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-gray-600">Vendido</p>
+                        <p className="font-semibold">Q{stats?.monthly_sales?.toLocaleString() || '0'}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-600">Restante</p>
+                        <p className="font-semibold">Q{Math.max(0, (stats?.monthly_target || 0) - (stats?.monthly_sales || 0)).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            
+            <Card className={selectedSalesperson !== 'all' && stats?.monthly_target > 0 ? "" : "lg:col-span-2"}>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="w-5 h-5" />
                   Estado de Pedidos
+                  {stats?.salesperson_name && (
+                    <span className="text-sm text-gray-500">- {stats.salesperson_name}</span>
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -1763,41 +1817,75 @@ const Dashboard = () => {
               </CardContent>
             </Card>
             
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Server className="w-5 h-5" />
-                  Estado SAP
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold">Modo:</span>
-                  <Badge variant={stats?.sap_mode === 'real' ? 'default' : 'secondary'}>
-                    {stats?.sap_mode === 'real' ? 'SAP Real' : 'Simulación'}
-                  </Badge>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold">Estado:</span>
-                  <div className="flex items-center gap-2">
-                    {stats?.sap_status === 'connected' ? (
-                      <CheckCircle className="w-4 h-4 text-emerald-500" />
-                    ) : (
-                      <XCircle className="w-4 h-4 text-red-500" />
-                    )}
-                    <span className="text-sm capitalize">{stats?.sap_status || 'unknown'}</span>
+            {selectedSalesperson === 'all' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Server className="w-5 h-5" />
+                    Estado SAP
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold">Modo:</span>
+                    <Badge variant={stats?.sap_mode === 'real' ? 'default' : 'secondary'}>
+                      {stats?.sap_mode === 'real' ? 'SAP Real' : 'Simulación'}
+                    </Badge>
                   </div>
-                </div>
-                
-                <Separator />
-                
-                <div className="text-sm text-gray-600">
-                  <p>Cotizaciones totales: {stats?.total_quotes_month || 0}</p>
-                  <p>Tasa conversión global: {Math.round(stats?.quote_conversion_rate || 0)}%</p>
-                </div>
-              </CardContent>
-            </Card>
+                  
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold">Estado:</span>
+                    <div className="flex items-center gap-2">
+                      {stats?.sap_status === 'connected' ? (
+                        <CheckCircle className="w-4 h-4 text-emerald-500" />
+                      ) : (
+                        <XCircle className="w-4 h-4 text-red-500" />
+                      )}
+                      <span className="text-sm capitalize">{stats?.sap_status || 'unknown'}</span>
+                    </div>
+                  </div>
+                  
+                  <Separator />
+                  
+                  <div className="text-sm text-gray-600">
+                    <p>Cotizaciones totales: {stats?.total_quotes_month || 0}</p>
+                    <p>Tasa conversión: {Math.round(stats?.quote_conversion_rate || 0)}%</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            
+            {selectedSalesperson !== 'all' && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Quote className="w-5 h-5" />
+                    Pipeline de Cotizaciones
+                    {stats?.salesperson_name && (
+                      <span className="text-sm text-gray-500">- {stats.salesperson_name}</span>
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {Object.entries(stats?.quote_stats || {}).map(([status, count]) => (
+                      <div key={status} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          {getQuoteStatusIcon(status)}
+                          <span className="text-sm">{getQuoteStatusText(status)}</span>
+                        </div>
+                        <span className="font-semibold">{count}</span>
+                      </div>
+                    ))}
+                    <Separator />
+                    <div className="text-sm text-gray-600">
+                      <p>Total cotizaciones: {stats?.total_quotes_month || 0}</p>
+                      <p>Tasa de conversión: {Math.round(stats?.quote_conversion_rate || 0)}%</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       );
