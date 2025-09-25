@@ -468,6 +468,99 @@ const UserManagement = () => {
         </CardContent>
       </Card>
 
+      {/* Edit User Modal */}
+      {editingUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold">Editar Usuario</h2>
+              <Button variant="ghost" onClick={cancelEdit}>
+                <X className="w-6 h-6" />
+              </Button>
+            </div>
+
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              updateUser(editingUser.id, editForm);
+            }} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold">Email (No editable)</label>
+                  <Input
+                    value={editingUser.email}
+                    disabled
+                    className="bg-gray-100"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold">Nombre Completo</label>
+                  <Input
+                    placeholder="Juan Pérez"
+                    value={editForm.full_name}
+                    onChange={(e) => setEditForm({...editForm, full_name: e.target.value})}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold">Rol</label>
+                  <Select value={editForm.role} onValueChange={(value) => setEditForm({...editForm, role: value})}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="seller">Vendedor</SelectItem>
+                      <SelectItem value="supervisor">Supervisor</SelectItem>
+                      <SelectItem value="admin">Administrador</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold">Código Vendedor SAP</label>
+                  <Input
+                    type="number"
+                    placeholder="1"
+                    value={editForm.sap_salesperson_code}
+                    onChange={(e) => setEditForm({...editForm, sap_salesperson_code: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold">Meta Mensual (GTQ)</label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="50000.00"
+                    value={editForm.monthly_target}
+                    onChange={(e) => setEditForm({...editForm, monthly_target: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm font-semibold">
+                    <Switch
+                      checked={editForm.is_active}
+                      onCheckedChange={(checked) => setEditForm({...editForm, is_active: checked})}
+                    />
+                    Usuario Activo
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t">
+                <Button type="button" variant="outline" onClick={cancelEdit} className="flex-1">
+                  Cancelar
+                </Button>
+                <Button 
+                  type="submit" 
+                  disabled={editLoading} 
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                >
+                  {editLoading ? 'Actualizando...' : 'Actualizar Usuario'}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Edit User Modal would go here */}
     </div>
   );
