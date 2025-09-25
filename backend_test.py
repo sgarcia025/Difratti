@@ -691,7 +691,7 @@ class DifrattiAPITester:
 
     def run_all_tests(self):
         """Run all backend tests"""
-        print("🚀 Starting Difratti Sales System Backend Tests")
+        print("🚀 Starting Enhanced Difratti Sales System Backend Tests")
         print(f"📍 Testing API at: {self.api_url}")
         print("=" * 60)
         
@@ -705,14 +705,39 @@ class DifrattiAPITester:
             print("\n❌ CRITICAL: Both login attempts failed. Cannot continue testing.")
             return False
         
+        # Test auth/me for both users
+        if admin_login_success:
+            self.test_auth_me(self.admin_token, "admin")
+        if seller_login_success:
+            self.test_auth_me(self.seller_token, "seller")
+        
+        # Test role-based features if both tokens available
+        if admin_login_success and seller_login_success:
+            print(f"\n🔄 Testing role-based features")
+            self.test_role_based_dashboard(self.admin_token, self.seller_token)
+            self.test_role_based_customers(self.admin_token, self.seller_token)
+        
+        # Use admin token for admin-only tests
+        if admin_login_success:
+            print(f"\n🔑 Testing admin-only SAP configuration features")
+            self.test_sap_config_get(self.admin_token)
+            self.test_sap_config_update(self.admin_token)
+            self.test_sap_test_connection(self.admin_token)
+            self.test_sap_deactivate(self.admin_token)  # Ensure we're in mock mode
+            # Note: Not testing activate as it requires real SAP credentials
+        
+        # Test seller access to admin endpoints (should be denied)
+        if seller_login_success:
+            print(f"\n🚫 Testing seller access to admin endpoints (should be denied)")
+            self.test_sap_config_get(self.seller_token)
+            self.test_sap_config_update(self.seller_token)
+            self.test_sap_test_connection(self.seller_token)
+        
         # Use admin token for remaining tests (prefer admin if available)
         test_token = self.admin_token if self.admin_token else self.seller_token
         user_type = "admin" if self.admin_token else "seller"
         
-        print(f"\n🔑 Using {user_type} token for remaining tests")
-        
-        # Test auth/me endpoint
-        self.test_auth_me(test_token, user_type)
+        print(f"\n🔑 Using {user_type} token for general tests")
         
         # Test dashboard stats
         self.test_dashboard_stats(test_token)
