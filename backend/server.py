@@ -1088,7 +1088,7 @@ async def get_order(
     order_id: str,
     current_user: User = Depends(get_current_user)
 ):
-    order = await db.orders.find_one({"id": order_id})
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     
@@ -1096,8 +1096,12 @@ async def get_order(
     if current_user.role == UserRole.SELLER and order["salesperson_code"] != current_user.sap_salesperson_code:
         raise HTTPException(status_code=403, detail="Access denied")
     
+    # Handle missing customer_name field for backward compatibility
+    if "customer_name" not in order:
+        order["customer_name"] = f"Customer {order.get('card_code', 'Unknown')}"
+    
     # Get order lines
-    lines = await db.order_lines.find({"order_id": order_id}).to_list(None)
+    lines = await db.order_lines.find({"order_id": order_id}, {"_id": 0}).to_list(None)
     order_obj = Order(**order)
     order_dict = order_obj.dict()
     order_dict["lines"] = lines
