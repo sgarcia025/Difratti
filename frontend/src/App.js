@@ -98,7 +98,10 @@ const Login = () => {
 
     const result = await login(email, password);
     
-    if (!result.success) {
+    if (result.success) {
+      // Navigate to dashboard on successful login
+      navigate('/', { replace: true });
+    } else {
       setError(result.error);
     }
     setLoading(false);
