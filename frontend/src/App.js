@@ -1627,8 +1627,8 @@ const Dashboard = () => {
       // Admin dashboard
       return (
         <div className="space-y-6">
-          {/* Date Filter */}
-          <div className="flex items-center gap-4">
+          {/* Date and Salesperson Filters */}
+          <div className="flex items-center gap-4 flex-wrap">
             <div className="flex items-center gap-2">
               <Calendar className="w-5 h-5 text-gray-500" />
               <span className="font-semibold">Filtros:</span>
@@ -1654,9 +1654,31 @@ const Dashboard = () => {
                 <SelectItem value={2025}>2025</SelectItem>
               </SelectContent>
             </Select>
-            <Badge variant="outline">
-              {stats?.month_name} {stats?.current_year}
-            </Badge>
+            
+            {/* Salesperson Filter (Admin Only) */}
+            <Select value={selectedSalesperson} onValueChange={setSelectedSalesperson}>
+              <SelectTrigger className="w-48">
+                <SelectValue placeholder="Seleccionar vendedor" />
+              </SelectTrigger>
+              <SelectContent>
+                {salespeople.map((salesperson) => (
+                  <SelectItem key={salesperson.id} value={salesperson.id}>
+                    {salesperson.full_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+            <div className="flex gap-2">
+              <Badge variant="outline">
+                {stats?.month_name} {stats?.current_year}
+              </Badge>
+              {stats?.salesperson_name && (
+                <Badge variant="secondary">
+                  {stats.salesperson_name}
+                </Badge>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
