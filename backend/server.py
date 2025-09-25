@@ -1072,7 +1072,7 @@ async def get_orders(
         
         filter_condition["created_at"] = {"$gte": start_date, "$lt": end_date}
     
-    orders = await db.orders.find(filter_condition).sort("created_at", -1).to_list(None)
+    orders = await db.orders.find(filter_condition, {"_id": 0}).sort("created_at", -1).to_list(None)
     
     # Handle missing customer_name field for backward compatibility
     result_orders = []
