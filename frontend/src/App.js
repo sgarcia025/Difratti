@@ -13,10 +13,13 @@ import { Avatar, AvatarFallback } from './components/ui/avatar';
 import { Alert, AlertDescription } from './components/ui/alert';
 import { Switch } from './components/ui/switch';
 import { Separator } from './components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './components/ui/select';
+import { Textarea } from './components/ui/textarea';
 import { 
   AlertCircle, Package, Users, FileText, BarChart3, Search, Menu, LogOut, 
   ShoppingCart, Plus, Eye, Settings, CheckCircle, XCircle, Target,
-  TrendingUp, Activity, Server, Wifi, WifiOff
+  TrendingUp, Activity, Server, Wifi, WifiOff, UserPlus, Edit, Trash2,
+  Quote, Calendar, Filter, ChevronDown, Send, CheckCheck, X, Clock
 } from 'lucide-react';
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -185,6 +188,808 @@ const Login = () => {
             </div>
           </CardContent>
         </Card>
+      </div>
+    </div>
+  );
+};
+
+// User Management Component (Admin only)
+const UserManagement = () => {
+  const [users, setUsers] = useState([]);
+  const [newUser, setNewUser] = useState({
+    email: '',
+    password: '',
+    full_name: '',
+    role: 'seller',
+    sap_salesperson_code: '',
+    monthly_target: ''
+  });
+  const [editingUser, setEditingUser] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  const loadUsers = async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const response = await axios.get(`${API}/users`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setUsers(response.data);
+    } catch (error) {
+      console.error('Error loading users:', error);
+    }
+  };
+
+  const createUser = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      const userData = {
+        ...newUser,
+        sap_salesperson_code: newUser.sap_salesperson_code ? parseInt(newUser.sap_salesperson_code) : null,
+        monthly_target: newUser.monthly_target ? parseFloat(newUser.monthly_target) : 0.0
+      };
+      
+      await axios.post(`${API}/users`, userData, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      alert('Usuario creado exitosamente');
+      setNewUser({
+        email: '',
+        password: '',
+        full_name: '',
+        role: 'seller',
+        sap_salesperson_code: '',
+        monthly_target: ''
+      });
+      loadUsers();
+    } catch (error) {
+      alert('Error al crear usuario: ' + (error.response?.data?.detail || error.message));
+    }
+    setLoading(false);
+  };
+
+  const updateUser = async (userId, updates) => {
+    try {
+      const token = localStorage.getItem('access_token');
+      await axios.put(`${API}/users/${userId}`, updates, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      loadUsers();
+      setEditingUser(null);
+      alert('Usuario actualizado exitosamente');
+    } catch (error) {
+      alert('Error al actualizar usuario: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  const deleteUser = async (userId) => {
+    if (!confirm('¿Está seguro de eliminar este usuario?')) return;
+    
+    try {
+      const token = localStorage.getItem('access_token');
+      await axios.delete(`${API}/users/${userId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      loadUsers();
+      alert('Usuario eliminado exitosamente');
+    } catch (error) {
+      alert('Error al eliminar usuario: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold text-gray-900">Gestión de Usuarios</h2>
+      
+      {/* Create User Form */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <UserPlus className="w-5 h-5" />
+            Crear Nuevo Usuario
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={createUser} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold">Email</label>
+                <Input
+                  type="email"
+                  placeholder="usuario@ejemplo.com"
+                  value={newUser.email}
+                  onChange={(e) => setNewUser({...newUser, email: e.target.value})}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold">Contraseña</label>
+                <Input
+                  type="password"
+                  placeholder="••••••••"
+                  value={newUser.password}
+                  onChange={(e) => setNewUser({...newUser, password: e.target.value})}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold">Nombre Completo</label>
+                <Input
+                  placeholder="Juan Pérez"
+                  value={newUser.full_name}
+                  onChange={(e) => setNewUser({...newUser, full_name: e.target.value})}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold">Rol</label>
+                <Select value={newUser.role} onValueChange={(value) => setNewUser({...newUser, role: value})}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="seller">Vendedor</SelectItem>
+                    <SelectItem value="supervisor">Supervisor</SelectItem>
+                    <SelectItem value="admin">Administrador</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold">Código Vendedor SAP</label>
+                <Input
+                  type="number"
+                  placeholder="1"
+                  value={newUser.sap_salesperson_code}
+                  onChange={(e) => setNewUser({...newUser, sap_salesperson_code: e.target.value})}
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold">Meta Mensual (GTQ)</label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="50000.00"
+                  value={newUser.monthly_target}
+                  onChange={(e) => setNewUser({...newUser, monthly_target: e.target.value})}
+                />
+              </div>
+            </div>
+            <Button type="submit" disabled={loading} className="bg-emerald-600 hover:bg-emerald-700">
+              {loading ? 'Creando...' : 'Crear Usuario'}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      {/* Users List */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Usuarios Registrados</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {users.map((user) => (
+              <div key={user.id} className="flex items-center justify-between p-4 border rounded-lg">
+                <div>
+                  <h3 className="font-semibold">{user.full_name}</h3>
+                  <p className="text-sm text-gray-600">{user.email}</p>
+                  <div className="flex gap-2 mt-2">
+                    <Badge variant={user.role === 'admin' ? 'default' : user.role === 'supervisor' ? 'secondary' : 'outline'}>
+                      {user.role}
+                    </Badge>
+                    {user.sap_salesperson_code && (
+                      <Badge variant="outline">SAP: {user.sap_salesperson_code}</Badge>
+                    )}
+                    <Badge variant={user.is_active ? 'default' : 'destructive'}>
+                      {user.is_active ? 'Activo' : 'Inactivo'}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setEditingUser(user)}
+                  >
+                    <Edit className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => deleteUser(user.id)}
+                    className="text-red-600 hover:text-red-700"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Edit User Modal would go here */}
+    </div>
+  );
+};
+
+// Order Form Component
+const OrderForm = ({ customer, onClose, onSuccess }) => {
+  const { user } = useAuth();
+  const [orderData, setOrderData] = useState({
+    customer_name: customer?.CardName || '',
+    card_code: customer?.CardCode || '',
+    contact_person: '',
+    doc_date: new Date().toISOString().split('T')[0],
+    doc_due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    comments: '',
+    priority: 'Normal',
+    payment_terms: '',
+    shipping_address: '',
+    billing_address: '',
+    lines: []
+  });
+  const [inventory, setInventory] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    loadInventory();
+  }, []);
+
+  const loadInventory = async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const response = await axios.get(`${API}/inventory?page_size=100`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setInventory(response.data.items || []);
+    } catch (error) {
+      console.error('Error loading inventory:', error);
+    }
+  };
+
+  const addLine = () => {
+    setOrderData({
+      ...orderData,
+      lines: [...orderData.lines, {
+        item_code: '',
+        description: '',
+        quantity: 1,
+        unit_price: 0,
+        discount_pct: 0,
+        warehouse_code: '01',
+        tax_code: 'IVA',
+        line_total: 0
+      }]
+    });
+  };
+
+  const updateLine = (index, field, value) => {
+    const newLines = [...orderData.lines];
+    newLines[index][field] = value;
+    
+    // Auto-fill description and price when item is selected
+    if (field === 'item_code') {
+      const item = inventory.find(i => i.ItemCode === value);
+      if (item) {
+        newLines[index].description = item.ItemName;
+        newLines[index].unit_price = item.Price || 0;
+      }
+    }
+    
+    // Calculate line total
+    if (field === 'quantity' || field === 'unit_price' || field === 'discount_pct') {
+      const quantity = parseFloat(newLines[index].quantity) || 0;
+      const unitPrice = parseFloat(newLines[index].unit_price) || 0;
+      const discountPct = parseFloat(newLines[index].discount_pct) || 0;
+      newLines[index].line_total = quantity * unitPrice * (1 - discountPct / 100);
+    }
+    
+    setOrderData({...orderData, lines: newLines});
+  };
+
+  const removeLine = (index) => {
+    const newLines = orderData.lines.filter((_, i) => i !== index);
+    setOrderData({...orderData, lines: newLines});
+  };
+
+  const calculateTotals = () => {
+    const subtotal = orderData.lines.reduce((sum, line) => sum + (line.line_total || 0), 0);
+    const tax = subtotal * 0.12;
+    const total = subtotal + tax;
+    return { subtotal, tax, total };
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (orderData.lines.length === 0) {
+      alert('Debe agregar al menos una línea al pedido');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      const response = await axios.post(`${API}/orders`, orderData, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      alert(`Pedido creado exitosamente: ${response.data.external_id}`);
+      onSuccess && onSuccess();
+      onClose();
+    } catch (error) {
+      alert('Error al crear pedido: ' + (error.response?.data?.detail || error.message));
+    }
+    setLoading(false);
+  };
+
+  const { subtotal, tax, total } = calculateTotals();
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold">Crear Pedido</h2>
+          <Button variant="ghost" onClick={onClose}>
+            <X className="w-6 h-6" />
+          </Button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Customer Info */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Información del Cliente</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-semibold">Cliente</label>
+                <Input
+                  value={orderData.customer_name}
+                  onChange={(e) => setOrderData({...orderData, customer_name: e.target.value})}
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-sm font-semibold">Código Cliente</label>
+                <Input
+                  value={orderData.card_code}
+                  onChange={(e) => setOrderData({...orderData, card_code: e.target.value})}
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-sm font-semibold">Persona Contacto</label>
+                <Input
+                  value={orderData.contact_person}
+                  onChange={(e) => setOrderData({...orderData, contact_person: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-semibold">Prioridad</label>
+                <Select value={orderData.priority} onValueChange={(value) => setOrderData({...orderData, priority: value})}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Low">Baja</SelectItem>
+                    <SelectItem value="Normal">Normal</SelectItem>
+                    <SelectItem value="High">Alta</SelectItem>
+                    <SelectItem value="Urgent">Urgente</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Order Lines */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex justify-between items-center">
+                Líneas del Pedido
+                <Button type="button" onClick={addLine} size="sm">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Agregar Línea
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {orderData.lines.map((line, index) => (
+                <div key={index} className="grid grid-cols-1 md:grid-cols-7 gap-4 p-4 border rounded-lg mb-4">
+                  <div>
+                    <label className="text-sm font-semibold">Producto</label>
+                    <Select value={line.item_code} onValueChange={(value) => updateLine(index, 'item_code', value)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {inventory.map((item) => (
+                          <SelectItem key={item.ItemCode} value={item.ItemCode}>
+                            {item.ItemCode} - {item.ItemName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold">Cantidad</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={line.quantity}
+                      onChange={(e) => updateLine(index, 'quantity', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold">Precio</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={line.unit_price}
+                      onChange={(e) => updateLine(index, 'unit_price', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold">Descuento %</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={line.discount_pct}
+                      onChange={(e) => updateLine(index, 'discount_pct', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold">Bodega</label>
+                    <Input
+                      value={line.warehouse_code}
+                      onChange={(e) => updateLine(index, 'warehouse_code', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold">Total</label>
+                    <Input
+                      value={`Q${line.line_total?.toFixed(2) || '0.00'}`}
+                      disabled
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <Button type="button" variant="outline" onClick={() => removeLine(index)}>
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              
+              {orderData.lines.length === 0 && (
+                <p className="text-center text-gray-500 py-8">
+                  No hay líneas agregadas. Haga clic en "Agregar Línea" para comenzar.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Totals */}
+          {orderData.lines.length > 0 && (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span>Subtotal:</span>
+                    <span>Q{subtotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>IVA (12%):</span>
+                    <span>Q{tax.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-lg">
+                    <span>Total:</span>
+                    <span>Q{total.toFixed(2)}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Submit */}
+          <div className="flex gap-3">
+            <Button type="button" variant="outline" onClick={onClose} className="flex-1">
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={loading} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
+              {loading ? 'Creando...' : 'Crear Pedido'}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// Quote Form Component
+const QuoteForm = ({ customer, onClose, onSuccess }) => {
+  const { user } = useAuth();
+  const [quoteData, setQuoteData] = useState({
+    customer_name: customer?.CardName || '',
+    card_code: customer?.CardCode || '',
+    contact_person: '',
+    valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    comments: '',
+    shipping_address: '',
+    billing_address: '',
+    lines: []
+  });
+  const [inventory, setInventory] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    loadInventory();
+  }, []);
+
+  const loadInventory = async () => {
+    try {
+      const token = localStorage.getItem('access_token');
+      const response = await axios.get(`${API}/inventory?page_size=100`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setInventory(response.data.items || []);
+    } catch (error) {
+      console.error('Error loading inventory:', error);
+    }
+  };
+
+  const addLine = () => {
+    setQuoteData({
+      ...quoteData,
+      lines: [...quoteData.lines, {
+        item_code: '',
+        description: '',
+        quantity: 1,
+        unit_price: 0,
+        discount_pct: 0,
+        warehouse_code: '01',
+        tax_code: 'IVA',
+        line_total: 0
+      }]
+    });
+  };
+
+  const updateLine = (index, field, value) => {
+    const newLines = [...quoteData.lines];
+    newLines[index][field] = value;
+    
+    // Auto-fill description and price when item is selected
+    if (field === 'item_code') {
+      const item = inventory.find(i => i.ItemCode === value);
+      if (item) {
+        newLines[index].description = item.ItemName;
+        newLines[index].unit_price = item.Price || 0;
+      }
+    }
+    
+    // Calculate line total
+    if (field === 'quantity' || field === 'unit_price' || field === 'discount_pct') {
+      const quantity = parseFloat(newLines[index].quantity) || 0;
+      const unitPrice = parseFloat(newLines[index].unit_price) || 0;
+      const discountPct = parseFloat(newLines[index].discount_pct) || 0;
+      newLines[index].line_total = quantity * unitPrice * (1 - discountPct / 100);
+    }
+    
+    setQuoteData({...quoteData, lines: newLines});
+  };
+
+  const removeLine = (index) => {
+    const newLines = quoteData.lines.filter((_, i) => i !== index);
+    setQuoteData({...quoteData, lines: newLines});
+  };
+
+  const calculateTotals = () => {
+    const subtotal = quoteData.lines.reduce((sum, line) => sum + (line.line_total || 0), 0);
+    const tax = subtotal * 0.12;
+    const total = subtotal + tax;
+    return { subtotal, tax, total };
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (quoteData.lines.length === 0) {
+      alert('Debe agregar al menos una línea a la cotización');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      const response = await axios.post(`${API}/quotes`, quoteData, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      alert(`Cotización creada exitosamente: ${response.data.quote_number}`);
+      onSuccess && onSuccess();
+      onClose();
+    } catch (error) {
+      alert('Error al crear cotización: ' + (error.response?.data?.detail || error.message));
+    }
+    setLoading(false);
+  };
+
+  const { subtotal, tax, total } = calculateTotals();
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold">Crear Cotización</h2>
+          <Button variant="ghost" onClick={onClose}>
+            <X className="w-6 h-6" />
+          </Button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Customer Info */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Información del Cliente</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-semibold">Cliente</label>
+                <Input
+                  value={quoteData.customer_name}
+                  onChange={(e) => setQuoteData({...quoteData, customer_name: e.target.value})}
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-sm font-semibold">Código Cliente</label>
+                <Input
+                  value={quoteData.card_code}
+                  onChange={(e) => setQuoteData({...quoteData, card_code: e.target.value})}
+                  required
+                />
+              </div>
+              <div>
+                <label className="text-sm font-semibold">Persona Contacto</label>
+                <Input
+                  value={quoteData.contact_person}
+                  onChange={(e) => setQuoteData({...quoteData, contact_person: e.target.value})}
+                />
+              </div>
+              <div>
+                <label className="text-sm font-semibold">Válido Hasta</label>
+                <Input
+                  type="date"
+                  value={quoteData.valid_until}
+                  onChange={(e) => setQuoteData({...quoteData, valid_until: e.target.value})}
+                  required
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Quote Lines - Similar to Order Form */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex justify-between items-center">
+                Líneas de Cotización
+                <Button type="button" onClick={addLine} size="sm">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Agregar Línea
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {quoteData.lines.map((line, index) => (
+                <div key={index} className="grid grid-cols-1 md:grid-cols-7 gap-4 p-4 border rounded-lg mb-4">
+                  <div>
+                    <label className="text-sm font-semibold">Producto</label>
+                    <Select value={line.item_code} onValueChange={(value) => updateLine(index, 'item_code', value)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {inventory.map((item) => (
+                          <SelectItem key={item.ItemCode} value={item.ItemCode}>
+                            {item.ItemCode} - {item.ItemName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold">Cantidad</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={line.quantity}
+                      onChange={(e) => updateLine(index, 'quantity', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold">Precio</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={line.unit_price}
+                      onChange={(e) => updateLine(index, 'unit_price', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold">Descuento %</label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={line.discount_pct}
+                      onChange={(e) => updateLine(index, 'discount_pct', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold">Bodega</label>
+                    <Input
+                      value={line.warehouse_code}
+                      onChange={(e) => updateLine(index, 'warehouse_code', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-semibold">Total</label>
+                    <Input
+                      value={`Q${line.line_total?.toFixed(2) || '0.00'}`}
+                      disabled
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <Button type="button" variant="outline" onClick={() => removeLine(index)}>
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              
+              {quoteData.lines.length === 0 && (
+                <p className="text-center text-gray-500 py-8">
+                  No hay líneas agregadas. Haga clic en "Agregar Línea" para comenzar.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Totals */}
+          {quoteData.lines.length > 0 && (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span>Subtotal:</span>
+                    <span>Q{subtotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>IVA (12%):</span>
+                    <span>Q{tax.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between font-bold text-lg">
+                    <span>Total:</span>
+                    <span>Q{total.toFixed(2)}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Submit */}
+          <div className="flex gap-3">
+            <Button type="button" variant="outline" onClick={onClose} className="flex-1">
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={loading} className="flex-1 bg-emerald-600 hover:bg-emerald-700">
+              {loading ? 'Creando...' : 'Crear Cotización'}
+            </Button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -488,18 +1293,24 @@ const Dashboard = () => {
   const [stats, setStats] = useState(null);
   const [inventory, setInventory] = useState({ items: [], total: 0 });
   const [customers, setCustomers] = useState([]);
+  const [quotes, setQuotes] = useState([]);
   const [orders, setOrders] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [showOrderForm, setShowOrderForm] = useState(false);
+  const [showQuoteForm, setShowQuoteForm] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
   useEffect(() => {
     loadDashboardStats();
-  }, []);
+  }, [selectedMonth, selectedYear]);
 
   const loadDashboardStats = async () => {
     try {
       const token = localStorage.getItem('access_token');
-      const response = await axios.get(`${API}/dashboard/stats`, {
+      const response = await axios.get(`${API}/dashboard/stats?month=${selectedMonth}&year=${selectedYear}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setStats(response.data);
@@ -536,39 +1347,47 @@ const Dashboard = () => {
     setLoading(false);
   };
 
-  const createSampleOrder = async () => {
+  const loadQuotes = async () => {
+    setLoading(true);
     try {
       const token = localStorage.getItem('access_token');
-      const orderData = {
-        external_id: `WEB-${Date.now()}`,
-        card_code: user.role === 'seller' ? 'C20003' : 'C20001',
-        doc_date: new Date().toISOString().split('T')[0],
-        doc_due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        salesperson_code: user.role === 'admin' ? 1 : (stats?.user_role === 'seller' ? 3 : 1),
-        comments: 'Pedido de prueba desde portal',
-        lines: [
-          {
-            item_code: 'A00001',
-            description: 'Laptop HP Pavilion 15',
-            quantity: 1,
-            unit_price: 8500.00,
-            discount_pct: 0,
-            warehouse_code: '01',
-            tax_code: 'IVA',
-            line_total: 8500.00
-          }
-        ]
-      };
-      
-      const response = await axios.post(`${API}/orders`, orderData, {
+      const response = await axios.get(`${API}/quotes?month=${selectedMonth}&year=${selectedYear}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      
-      alert(`Pedido creado: ${response.data.external_id}`);
-      loadDashboardStats();
+      setQuotes(response.data.quotes || []);
     } catch (error) {
-      console.error('Error creating order:', error);
-      alert('Error al crear pedido');
+      console.error('Error loading quotes:', error);
+    }
+    setLoading(false);
+  };
+
+  const updateQuoteStatus = async (quoteId, status, comments = '') => {
+    try {
+      const token = localStorage.getItem('access_token');
+      await axios.put(`${API}/quotes/${quoteId}/status`, { status, comments }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      loadQuotes();
+      loadDashboardStats();
+      alert('Estado de cotización actualizado');
+    } catch (error) {
+      alert('Error al actualizar cotización: ' + (error.response?.data?.detail || error.message));
+    }
+  };
+
+  const convertQuoteToOrder = async (quoteId) => {
+    if (!confirm('¿Convertir esta cotización en pedido?')) return;
+    
+    try {
+      const token = localStorage.getItem('access_token');
+      await axios.post(`${API}/quotes/${quoteId}/convert-to-order`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      loadQuotes();
+      loadDashboardStats();
+      alert('Cotización convertida a pedido exitosamente');
+    } catch (error) {
+      alert('Error al convertir cotización: ' + (error.response?.data?.detail || error.message));
     }
   };
 
@@ -580,6 +1399,8 @@ const Dashboard = () => {
       loadInventory();
     } else if (tab === 'customers') {
       loadCustomers();
+    } else if (tab === 'quotes') {
+      loadQuotes();
     }
   };
 
@@ -591,11 +1412,65 @@ const Dashboard = () => {
     }
   };
 
+  const getQuoteStatusIcon = (status) => {
+    switch (status) {
+      case 'draft': return <Clock className="w-4 h-4 text-gray-500" />;
+      case 'sent': return <Send className="w-4 h-4 text-blue-500" />;
+      case 'won': return <CheckCheck className="w-4 h-4 text-emerald-500" />;
+      case 'lost': return <X className="w-4 h-4 text-red-500" />;
+      case 'expired': return <XCircle className="w-4 h-4 text-orange-500" />;
+      default: return <Clock className="w-4 h-4 text-gray-500" />;
+    }
+  };
+
+  const getQuoteStatusText = (status) => {
+    switch (status) {
+      case 'draft': return 'Borrador';
+      case 'sent': return 'Enviada';
+      case 'won': return 'Ganada';
+      case 'lost': return 'Perdida';
+      case 'expired': return 'Expirada';
+      default: return status;
+    }
+  };
+
   // Render different dashboards based on user role
   const renderDashboard = () => {
     if (user.role === 'seller') {
       return (
         <div className="space-y-6">
+          {/* Date Filter */}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-gray-500" />
+              <span className="font-semibold">Filtros:</span>
+            </div>
+            <Select value={selectedMonth} onValueChange={(value) => setSelectedMonth(parseInt(value))}>
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Array.from({length: 12}, (_, i) => (
+                  <SelectItem key={i+1} value={i+1}>
+                    {new Date(2024, i).toLocaleDateString('es', { month: 'long' })}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={selectedYear} onValueChange={(value) => setSelectedYear(parseInt(value))}>
+              <SelectTrigger className="w-24">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={2024}>2024</SelectItem>
+                <SelectItem value={2025}>2025</SelectItem>
+              </SelectContent>
+            </Select>
+            <Badge variant="outline">
+              {stats?.month_name} {stats?.current_year}
+            </Badge>
+          </div>
+
           {/* Seller KPIs */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
@@ -634,20 +1509,20 @@ const Dashboard = () => {
               </CardContent>
             </Card>
             
-            <Card className="bg-gradient-to-r from-amber-500 to-amber-600 text-white">
+            <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-amber-100">Mis Clientes</p>
-                    <p className="text-3xl font-bold">{stats?.customer_count || 0}</p>
+                    <p className="text-orange-100">Conversión</p>
+                    <p className="text-3xl font-bold">{Math.round(stats?.quote_conversion_rate || 0)}%</p>
                   </div>
-                  <Users className="w-8 h-8 text-amber-200" />
+                  <Quote className="w-8 h-8 text-orange-200" />
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Seller Progress */}
+          {/* Seller Progress and Pipeline */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
               <CardHeader>
@@ -685,30 +1560,26 @@ const Dashboard = () => {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <FileText className="w-5 h-5" />
-                  Mis Pedidos
+                  <Quote className="w-5 h-5" />
+                  Pipeline de Cotizaciones
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
-                  {Object.entries(stats?.order_stats || {}).map(([status, count]) => (
+                  {Object.entries(stats?.quote_stats || {}).map(([status, count]) => (
                     <div key={status} className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <Badge variant={
-                          status === 'synced' ? 'default' : 
-                          status === 'error' ? 'destructive' : 
-                          'secondary'
-                        }>
-                          {status === 'synced' ? 'Sincronizado' : 
-                           status === 'queued' ? 'En Cola' :
-                           status === 'error' ? 'Error' :
-                           status === 'draft' ? 'Borrador' :
-                           status}
-                        </Badge>
+                        {getQuoteStatusIcon(status)}
+                        <span className="text-sm">{getQuoteStatusText(status)}</span>
                       </div>
                       <span className="font-semibold">{count}</span>
                     </div>
                   ))}
+                  <Separator />
+                  <div className="text-sm text-gray-600">
+                    <p>Total cotizaciones: {stats?.total_quotes_month || 0}</p>
+                    <p>Tasa de conversión: {Math.round(stats?.quote_conversion_rate || 0)}%</p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -719,6 +1590,38 @@ const Dashboard = () => {
       // Admin dashboard
       return (
         <div className="space-y-6">
+          {/* Date Filter */}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-gray-500" />
+              <span className="font-semibold">Filtros:</span>
+            </div>
+            <Select value={selectedMonth} onValueChange={(value) => setSelectedMonth(parseInt(value))}>
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Array.from({length: 12}, (_, i) => (
+                  <SelectItem key={i+1} value={i+1}>
+                    {new Date(2024, i).toLocaleDateString('es', { month: 'long' })}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={selectedYear} onValueChange={(value) => setSelectedYear(parseInt(value))}>
+              <SelectTrigger className="w-24">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={2024}>2024</SelectItem>
+                <SelectItem value={2025}>2025</SelectItem>
+              </SelectContent>
+            </Select>
+            <Badge variant="outline">
+              {stats?.month_name} {stats?.current_year}
+            </Badge>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <Card className="bg-gradient-to-r from-blue-500 to-blue-600 text-white">
               <CardContent className="p-6">
@@ -756,14 +1659,14 @@ const Dashboard = () => {
               </CardContent>
             </Card>
             
-            <Card className="bg-gradient-to-r from-amber-500 to-amber-600 text-white">
+            <Card className="bg-gradient-to-r from-orange-500 to-orange-600 text-white">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-amber-100">Pendientes</p>
-                    <p className="text-3xl font-bold">{stats?.pending_sync || 0}</p>
+                    <p className="text-orange-100">Conversión</p>
+                    <p className="text-3xl font-bold">{Math.round(stats?.quote_conversion_rate || 0)}%</p>
                   </div>
-                  <AlertCircle className="w-8 h-8 text-amber-200" />
+                  <Quote className="w-8 h-8 text-orange-200" />
                 </div>
               </CardContent>
             </Card>
@@ -830,14 +1733,10 @@ const Dashboard = () => {
                 
                 <Separator />
                 
-                <Button 
-                  onClick={createSampleOrder}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700"
-                  data-testid="create-sample-order"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Crear Pedido de Prueba
-                </Button>
+                <div className="text-sm text-gray-600">
+                  <p>Cotizaciones totales: {stats?.total_quotes_month || 0}</p>
+                  <p>Tasa conversión global: {Math.round(stats?.quote_conversion_rate || 0)}%</p>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -893,7 +1792,7 @@ const Dashboard = () => {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
           {/* Tab Navigation */}
-          <TabsList className={`grid w-full ${user?.role === 'admin' ? 'grid-cols-5' : 'grid-cols-4'} bg-white shadow-sm h-12`}>
+          <TabsList className={`grid w-full ${user?.role === 'admin' ? 'grid-cols-7' : 'grid-cols-5'} bg-white shadow-sm h-12`}>
             <TabsTrigger value="dashboard" className="flex items-center gap-2 h-10" data-testid="dashboard-tab">
               <BarChart3 className="w-4 h-4" />
               <span className="hidden sm:inline">Dashboard</span>
@@ -906,15 +1805,25 @@ const Dashboard = () => {
               <Users className="w-4 h-4" />
               <span className="hidden sm:inline">Clientes</span>
             </TabsTrigger>
+            <TabsTrigger value="quotes" className="flex items-center gap-2 h-10" data-testid="quotes-tab">
+              <Quote className="w-4 h-4" />
+              <span className="hidden sm:inline">Cotizaciones</span>
+            </TabsTrigger>
             <TabsTrigger value="orders" className="flex items-center gap-2 h-10" data-testid="orders-tab">
               <FileText className="w-4 h-4" />
               <span className="hidden sm:inline">Pedidos</span>
             </TabsTrigger>
             {user?.role === 'admin' && (
-              <TabsTrigger value="sap-config" className="flex items-center gap-2 h-10" data-testid="sap-config-tab">
-                <Settings className="w-4 h-4" />
-                <span className="hidden sm:inline">SAP Config</span>
-              </TabsTrigger>
+              <>
+                <TabsTrigger value="users" className="flex items-center gap-2 h-10" data-testid="users-tab">
+                  <UserPlus className="w-4 h-4" />
+                  <span className="hidden sm:inline">Usuarios</span>
+                </TabsTrigger>
+                <TabsTrigger value="sap-config" className="flex items-center gap-2 h-10" data-testid="sap-config-tab">
+                  <Settings className="w-4 h-4" />
+                  <span className="hidden sm:inline">SAP Config</span>
+                </TabsTrigger>
+              </>
             )}
           </TabsList>
 
@@ -959,6 +1868,9 @@ const Dashboard = () => {
                           <p className="text-sm text-gray-500">UOM: {item.UOM}</p>
                           {item.Stock !== undefined && (
                             <p className="text-sm text-gray-500">Stock: {item.Stock} unidades</p>
+                          )}
+                          {item.Price && (
+                            <p className="text-sm font-semibold text-emerald-600">Q{item.Price.toLocaleString()}</p>
                           )}
                         </div>
                         <div className="flex items-center gap-3">
@@ -1010,9 +1922,32 @@ const Dashboard = () => {
                           <p className="text-sm text-gray-500">
                             Lista: {customer.PriceListNum || 'N/A'}
                           </p>
-                          <Button size="sm" variant="outline" className="mt-2" data-testid={`view-customer-${customer.CardCode}`}>
-                            <Eye className="w-4 h-4" />
-                          </Button>
+                          <div className="flex gap-2 mt-2">
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => {
+                                setSelectedCustomer(customer);
+                                setShowQuoteForm(true);
+                              }}
+                              data-testid={`quote-customer-${customer.CardCode}`}
+                            >
+                              <Quote className="w-4 h-4 mr-1" />
+                              Cotizar
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              onClick={() => {
+                                setSelectedCustomer(customer);
+                                setShowOrderForm(true);
+                              }}
+                              className="bg-emerald-600 hover:bg-emerald-700"
+                              data-testid={`order-customer-${customer.CardCode}`}
+                            >
+                              <ShoppingCart className="w-4 h-4 mr-1" />
+                              Pedido
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     </CardContent>
@@ -1028,27 +1963,132 @@ const Dashboard = () => {
             </div>
           </TabsContent>
 
+          {/* Quotes Tab */}
+          <TabsContent value="quotes" className="space-y-4" data-testid="quotes-content">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-bold">Pipeline de Cotizaciones</h2>
+              <Button 
+                onClick={() => setShowQuoteForm(true)}
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Nueva Cotización
+              </Button>
+            </div>
+
+            <div className="grid gap-4">
+              {loading ? (
+                <div className="text-center py-8">Cargando cotizaciones...</div>
+              ) : (
+                quotes.map((quote) => (
+                  <Card key={quote.id} className="hover:shadow-md transition-shadow">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="flex items-center gap-2 mb-2">
+                            <h3 className="font-semibold text-lg">{quote.quote_number}</h3>
+                            <Badge variant={
+                              quote.status === 'won' ? 'default' : 
+                              quote.status === 'lost' ? 'destructive' : 
+                              quote.status === 'expired' ? 'secondary' : 
+                              'outline'
+                            }>
+                              {getQuoteStatusIcon(quote.status)}
+                              <span className="ml-1">{getQuoteStatusText(quote.status)}</span>
+                            </Badge>
+                          </div>
+                          <p className="text-gray-600">{quote.customer_name}</p>
+                          <p className="text-sm text-gray-500">
+                            Válida hasta: {new Date(quote.valid_until).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xl font-bold text-emerald-600">
+                            Q{quote.grand_total?.toLocaleString() || '0.00'}
+                          </p>
+                          <div className="flex gap-2 mt-2">
+                            {quote.status === 'draft' && (
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => updateQuoteStatus(quote.id, 'sent')}
+                              >
+                                <Send className="w-4 h-4 mr-1" />
+                                Enviar
+                              </Button>
+                            )}
+                            {(quote.status === 'sent' || quote.status === 'draft') && (
+                              <>
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={() => convertQuoteToOrder(quote.id)}
+                                  className="text-emerald-600"
+                                >
+                                  <CheckCheck className="w-4 h-4 mr-1" />
+                                  Ganar
+                                </Button>
+                                <Button 
+                                  size="sm" 
+                                  variant="outline"
+                                  onClick={() => updateQuoteStatus(quote.id, 'lost')}
+                                  className="text-red-600"
+                                >
+                                  <X className="w-4 h-4 mr-1" />
+                                  Perder
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+              
+              {!loading && quotes.length === 0 && (
+                <div className="text-center py-8 text-gray-500">
+                  No hay cotizaciones para el período seleccionado
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
           {/* Orders Tab */}
           <TabsContent value="orders" className="space-y-4" data-testid="orders-content">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-bold">Gestión de Pedidos</h2>
+              <Button 
+                onClick={() => setShowOrderForm(true)}
+                className="bg-emerald-600 hover:bg-emerald-700"
+                data-testid="create-order-button"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Nuevo Pedido
+              </Button>
+            </div>
+            
             <Card>
-              <CardHeader>
-                <CardTitle>Gestión de Pedidos</CardTitle>
-              </CardHeader>
-              <CardContent>
+              <CardContent className="p-6">
                 <p className="text-gray-600 mb-4">
-                  Esta sección permite crear y gestionar pedidos que se sincronizan con SAP Business One.
+                  Los pedidos se crean y sincronizan automáticamente con SAP Business One.
                 </p>
-                <Button 
-                  onClick={createSampleOrder}
-                  className="bg-emerald-600 hover:bg-emerald-700"
-                  data-testid="create-order-button"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Crear Pedido
-                </Button>
+                <div className="text-sm text-gray-500">
+                  <p>• Use el botón "Nuevo Pedido" o seleccione un cliente para crear pedidos</p>
+                  <p>• Las cotizaciones ganadas se convierten automáticamente en pedidos</p>
+                  <p>• Los pedidos se sincronizan en tiempo real con SAP</p>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* User Management Tab (Admin only) */}
+          {user?.role === 'admin' && (
+            <TabsContent value="users" className="space-y-4" data-testid="users-content">
+              <UserManagement />
+            </TabsContent>
+          )}
 
           {/* SAP Configuration Tab (Admin only) */}
           {user?.role === 'admin' && (
@@ -1058,6 +2098,37 @@ const Dashboard = () => {
           )}
         </Tabs>
       </main>
+
+      {/* Order Form Modal */}
+      {showOrderForm && (
+        <OrderForm 
+          customer={selectedCustomer}
+          onClose={() => {
+            setShowOrderForm(false);
+            setSelectedCustomer(null);
+          }}
+          onSuccess={() => {
+            loadDashboardStats();
+          }}
+        />
+      )}
+
+      {/* Quote Form Modal */}
+      {showQuoteForm && (
+        <QuoteForm 
+          customer={selectedCustomer}
+          onClose={() => {
+            setShowQuoteForm(false);
+            setSelectedCustomer(null);
+          }}
+          onSuccess={() => {
+            loadDashboardStats();
+            if (activeTab === 'quotes') {
+              loadQuotes();
+            }
+          }}
+        />
+      )}
     </div>
   );
 };
