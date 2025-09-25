@@ -590,9 +590,18 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
 @api_router.get("/sap/config")
 async def get_sap_config(current_user: User = Depends(require_role([UserRole.ADMIN]))):
     config = await sap.get_config()
-    # Don't send password back
-    safe_config = config.copy()
-    safe_config["b1_password"] = "****" if config["b1_password"] else ""
+    # Don't send password back and remove MongoDB ObjectId fields
+    safe_config = {
+        "sap_mode": config.get("sap_mode", "mock"),
+        "b1_host": config.get("b1_host", ""),
+        "b1_company_db": config.get("b1_company_db", ""),
+        "b1_username": config.get("b1_username", ""),
+        "b1_password": "****" if config.get("b1_password") else "",
+        "b1_ssl_verify": config.get("b1_ssl_verify", True),
+        "b1_timeout_ms": config.get("b1_timeout_ms", 60000),
+        "connection_status": config.get("connection_status", "disconnected"),
+        "last_test": config.get("last_test").isoformat() if config.get("last_test") else None
+    }
     return safe_config
 
 @api_router.post("/sap/config")
