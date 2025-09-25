@@ -900,13 +900,13 @@ async def get_quotes(
         
         filter_condition["created_at"] = {"$gte": start_date, "$lt": end_date}
     
-    quotes = await db.quotes.find(filter_condition).sort("created_at", -1).to_list(None)
+    quotes = await db.quotes.find(filter_condition, {"_id": 0}).sort("created_at", -1).to_list(None)
     
     # Get quote lines for each quote
     result = []
     for quote in quotes:
         quote_obj = Quote(**quote)
-        lines = await db.quote_lines.find({"quote_id": quote["id"]}).to_list(None)
+        lines = await db.quote_lines.find({"quote_id": quote["id"]}, {"_id": 0}).to_list(None)
         quote_dict = quote_obj.dict()
         quote_dict["lines"] = lines
         result.append(quote_dict)
