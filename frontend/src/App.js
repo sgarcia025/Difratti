@@ -1378,7 +1378,17 @@ const Dashboard = () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('access_token');
-      const response = await axios.get(`${API}/quotes?month=${selectedMonth}&year=${selectedYear}`, {
+      let url = `${API}/quotes?month=${selectedMonth}&year=${selectedYear}`;
+      
+      // Add salesperson filter for admin
+      if (user?.role === 'admin' && selectedSalesperson !== 'all') {
+        const salesperson = salespeople.find(s => s.id === selectedSalesperson);
+        if (salesperson?.sap_salesperson_code) {
+          url += `&salesperson_code=${salesperson.sap_salesperson_code}`;
+        }
+      }
+      
+      const response = await axios.get(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setQuotes(response.data.quotes || []);
