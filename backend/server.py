@@ -1074,7 +1074,14 @@ async def get_orders(
     
     orders = await db.orders.find(filter_condition).sort("created_at", -1).to_list(None)
     
-    return {"orders": [Order(**order) for order in orders]}
+    # Handle missing customer_name field for backward compatibility
+    result_orders = []
+    for order in orders:
+        if "customer_name" not in order:
+            order["customer_name"] = f"Customer {order.get('card_code', 'Unknown')}"
+        result_orders.append(Order(**order))
+    
+    return {"orders": result_orders}
 
 @api_router.get("/orders/{order_id}")
 async def get_order(
